@@ -9,7 +9,7 @@ Approaches:
 - browsers are known to kill background tabs and service workers too, but the service worker will be able to run in the background for longer 
 
 ## 📱 How to Use
-
+    
 ### Setting Up Your Timer
 1. **Set Duration**: Enter your desired focus time (default: 25 minutes)
 2. **Grant Permissions**: Allow notifications and audio for the best experience
@@ -102,31 +102,31 @@ sample += Math.sin(2 * Math.PI * 523.25 * time) * 0.4; // C5 note
 ### Background Usage
 - Timer runs while working in other apps
 - Perfect for full-screen applications
-- No need to keep browser tab open
+- No need to keep a browser tab open  
 
-## 🔧 Troubleshooting
+## 🔧 Troubleshooting  
 
-### Timer Not Running in Background
-- Ensure you're accessing via HTTP/HTTPS (not file://)
-- Check that service workers are enabled in your browser
-- Grant notification permissions for full functionality
+### Timer Not Running in Background  
+- Ensure you're accessing via HTTP/HTTPS (not file://)  
+- Check that service workers are enabled in your browser  
+- Grant notification permissions for full functionality  
 
-### No Sound Notifications
-- Grant audio permissions when prompted
-- Check browser audio settings
-- Ensure browser isn't muted
+### No Sound Notifications  
+- Grant audio permissions when prompted  
+- Check browser audio settings  
+- Ensure the browser isn't muted  
 
-### Notifications Not Showing
-- Grant notification permissions
-- Check browser notification settings
-- Ensure "Do Not Disturb" mode is off
+### Notifications Not Showing  
+- Grant notification permissions  
+- Check browser notification settings  
+- Ensure "Do Not Disturb" mode is off  
 
-### Timer State Lost
-- Service workers need HTTPS or localhost
-- Check if IndexedDB is enabled
+### Timer State Lost  
+- Service workers need HTTPS or localhost  
+- Check if IndexedDB is enabled  
   
-#  # Improvement recommendations
-- Usage use push notifications with service workers for better reliability and sync across devices
+# Improvement recommendations
+- Use push notifications with service workers for better reliability and sync across devices
 
 
 

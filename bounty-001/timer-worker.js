@@ -17,10 +17,10 @@ let countdownInterval = null;
 function openDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    
+
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
-    
+
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -86,13 +86,17 @@ function startTimerCountdown() {
   if (countdownInterval) {
     clearInterval(countdownInterval);
   }
-  
+
   countdownInterval = setInterval(async () => {
-    if (!activeTimer) return;
-    
+    if (!activeTimer) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+      return;
+    }
+
     const now = Date.now();
     const remaining = activeTimer.endTime - now;
-    
+
     if (remaining <= 0) {
       // Timer completed
       await onTimerComplete();
@@ -100,7 +104,7 @@ function startTimerCountdown() {
       // Update remaining time and sync with clients
       activeTimer.remaining = remaining;
       await storeTimerState(activeTimer);
-      
+
       // Notify all clients of the update
       const clients = await self.clients.matchAll();
       clients.forEach(client => {
@@ -119,18 +123,18 @@ function startTimerCountdown() {
 // Handle timer completion
 async function onTimerComplete() {
   console.log('Timer completed!');
-  
+
   // Clear countdown
   if (countdownInterval) {
     clearInterval(countdownInterval);
     countdownInterval = null;
   }
-  
+
   // Store completion state
   activeTimer.status = 'completed';
   activeTimer.remaining = 0;
   await storeTimerState(activeTimer);
-  
+
   // Show browser notification
   try {
     await self.registration.showNotification('🧘 Zen Focus Complete!', {
@@ -149,7 +153,7 @@ async function onTimerComplete() {
   } catch (error) {
     console.error('Failed to show notification:', error);
   }
-  
+
   // Notify all clients
   const clients = await self.clients.matchAll();
   clients.forEach(client => {
@@ -160,7 +164,7 @@ async function onTimerComplete() {
       endTime: activeTimer.endTime
     });
   });
-  
+
   // Clear active timer
   activeTimer = null;
   await clearTimerState();
@@ -174,17 +178,17 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   console.log('Zen Focus Service Worker activated');
-  
+
   event.waitUntil((async () => {
     // Take control of all clients
     await self.clients.claim();
-    
+
     // Check for existing timer state
     const savedTimer = await getTimerState();
     if (savedTimer && savedTimer.status === 'running') {
       activeTimer = savedTimer;
       const now = Date.now();
-      
+
       if (activeTimer.endTime > now) {
         console.log('Resuming saved timer from storage');
         startTimerCountdown();
@@ -193,7 +197,7 @@ self.addEventListener('activate', (event) => {
         await onTimerComplete();
       }
     }
-    
+
     // Start keep-alive mechanism
     if (keepAliveInterval) clearInterval(keepAliveInterval);
     keepAliveInterval = setInterval(() => {
@@ -205,30 +209,30 @@ self.addEventListener('activate', (event) => {
 // Handle messages from the main thread
 self.addEventListener('message', (event) => {
   const { type, data } = event.data;
-  
+
   console.log('Service Worker received message:', { type, data });
-  
+
   switch (type) {
     case 'START_TIMER':
       handleStartTimer(data, event.source);
       break;
-      
+
     case 'PAUSE_TIMER':
       handlePauseTimer(event.source);
       break;
-      
+
     case 'RESUME_TIMER':
       handleResumeTimer(event.source);
       break;
-      
+
     case 'STOP_TIMER':
       handleStopTimer(event.source);
       break;
-      
+
     case 'GET_TIMER_STATE':
       handleGetTimerState(event.source);
       break;
-      
+
     default:
       console.warn('Unknown message type:', type);
   }
@@ -238,7 +242,7 @@ self.addEventListener('message', (event) => {
 async function handleStartTimer(data, source) {
   const { duration, sessionType = 'focus' } = data;
   const now = Date.now();
-  
+
   activeTimer = {
     id: `timer_${now}`,
     duration: duration,
@@ -250,10 +254,10 @@ async function handleStartTimer(data, source) {
     pausedAt: null,
     pausedRemaining: null
   };
-  
+
   await storeTimerState(activeTimer);
   startTimerCountdown();
-  
+
   source.postMessage({
     type: 'TIMER_STARTED',
     timer: activeTimer
@@ -266,21 +270,21 @@ async function handlePauseTimer(source) {
     source.postMessage({ type: 'TIMER_ERROR', message: 'No active timer to pause' });
     return;
   }
-  
+
   // Stop countdown
   if (countdownInterval) {
     clearInterval(countdownInterval);
     countdownInterval = null;
   }
-  
+
   // Update timer state
   const now = Date.now();
   activeTimer.status = 'paused';
   activeTimer.pausedAt = now;
   activeTimer.pausedRemaining = activeTimer.endTime - now;
-  
+
   await storeTimerState(activeTimer);
-  
+
   source.postMessage({
     type: 'TIMER_PAUSED',
     timer: activeTimer
@@ -293,16 +297,16 @@ async function handleResumeTimer(source) {
     source.postMessage({ type: 'TIMER_ERROR', message: 'No paused timer to resume' });
     return;
   }
-  
+
   // Calculate new end time
   const now = Date.now();
   activeTimer.endTime = now + activeTimer.pausedRemaining;
   activeTimer.status = 'running';
   activeTimer.pausedAt = null;
-  
+
   await storeTimerState(activeTimer);
   startTimerCountdown();
-  
+
   source.postMessage({
     type: 'TIMER_RESUMED',
     timer: activeTimer
@@ -316,11 +320,11 @@ async function handleStopTimer(source) {
     clearInterval(countdownInterval);
     countdownInterval = null;
   }
-  
+
   // Clear state
   activeTimer = null;
   await clearTimerState();
-  
+
   source.postMessage({
     type: 'TIMER_STOPPED'
   });
@@ -329,7 +333,7 @@ async function handleStopTimer(source) {
 // Handle get timer state
 async function handleGetTimerState(source) {
   const savedTimer = await getTimerState();
-  
+
   source.postMessage({
     type: 'TIMER_STATE',
     timer: savedTimer
@@ -339,17 +343,17 @@ async function handleGetTimerState(source) {
 // Handle notification clicks
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  
+
   const action = event.action;
-  
+
   event.waitUntil((async () => {
     const clients = await self.clients.matchAll({ type: 'window' });
-    
+
     // Try to focus existing window first
     for (const client of clients) {
       if (client.url.includes('pomo.html') && 'focus' in client) {
         await client.focus();
-        
+
         // Send action to client if needed
         if (action === 'start-break') {
           client.postMessage({ type: 'START_BREAK_SESSION' });
@@ -357,7 +361,7 @@ self.addEventListener('notificationclick', (event) => {
         return;
       }
     }
-    
+
     // Open new window if no existing client
     if (self.clients.openWindow) {
       const newClient = await self.clients.openWindow('/pomo.html');
