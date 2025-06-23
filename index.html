@@ -1,0 +1,1256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pomodoro Timer</title>
+    <!-- Load test script - will not execute automatically -->
+    <script src="tests.js" defer></script>
+    <style>
+        /* CSS Reset */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+
+        .container {
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            min-width: 320px;
+        }
+
+        h1 {
+            margin-bottom: 1.5rem;
+            color: #e74c3c;
+        }
+
+        .timer-display {
+            font-size: 3rem;
+            font-weight: bold;
+            margin: 1.5rem 0;
+        }
+
+        .input-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            padding: 0.75rem;
+            font-size: 1rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        button {
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #e74c3c;
+            color: white;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #c0392b;
+        }
+
+        button:focus {
+            outline: 3px solid rgba(231, 76, 60, 0.5);
+        }
+
+        .error-message {
+            color: #e74c3c;
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            min-height: 1.25rem;
+            visibility: hidden;
+        }        .permissions-message {
+            background-color: #fdedec;
+            border: 1px solid #fadbd8;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-top: 1rem;
+            display: none;
+            line-height: 1.5;
+        }
+        
+        .permissions-message p {
+            margin-bottom: 0.5rem;
+        }
+        
+        /* Notification Settings Styles */
+        .settings-section {
+            margin-top: 1.5rem;
+            text-align: left;
+            border-top: 1px solid #eee;
+            padding-top: 1rem;
+        }
+        
+        .settings-section summary {
+            cursor: pointer;
+            color: #3498db;
+            font-weight: 500;
+            padding: 0.5rem 0;
+        }
+        
+        .settings-section summary:hover {
+            color: #2980b9;
+        }
+        
+        .settings-controls {
+            padding: 1rem 0;
+        }
+        
+        .setting-item {
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .setting-item input {
+            width: 60px;
+            padding: 0.5rem;
+            text-align: center;
+        }
+        
+        #test-notification-button {
+            width: 100%;
+            background-color: #3498db;
+            margin-top: 0.5rem;
+        }
+        
+        #test-notification-button:hover {
+            background-color: #2980b9;
+        }
+        
+        /* Accessibility - Hide visually but maintain accessibility for screen readers */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        
+        /* Focus indicators for accessibility */
+        input:focus, button:focus {
+            outline: 3px solid #3498db;
+            outline-offset: 2px;
+        }
+        
+        /* Flash animation for visual notifications */
+        @keyframes flash {
+            from {
+                background-color: #fff;
+                color: #e74c3c;
+            }
+            to {
+                background-color: #e74c3c;
+                color: #fff;
+            }
+        }
+        
+        /* Stronger flash animation for when notifications are denied */
+        @keyframes flashStrong {
+            0% {
+                background-color: #e74c3c;
+                color: #fff;
+                transform: scale(1.05);
+            }
+            50% {
+                background-color: #fff;
+                color: #e74c3c;
+                transform: scale(1);
+            }
+            100% {
+                background-color: #e74c3c;
+                color: #fff;
+                transform: scale(1.05);
+            }
+        }
+        
+        /* Small button style for permission requests */
+        .small-button {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.85rem;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 0.5rem 0;
+        }
+        
+        .small-button:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+<body>    <main class="container">
+        <h1>Pomodoro Timer</h1>
+        
+        <div class="input-group">
+            <label for="timer-input">Set Timer (minutes):</label>
+            <input 
+                type="number" 
+                id="timer-input" 
+                min="1" 
+                max="999" 
+                value="25"
+                aria-describedby="input-error"
+                aria-required="true"
+                autocomplete="off"
+            >
+            <div class="error-message" id="input-error" role="alert"></div>
+        </div>
+        
+        <div class="timer-display" id="timer-display" aria-live="polite" role="timer" aria-label="Timer showing minutes and seconds">25:00</div>
+        
+        <div class="button-group">
+            <button id="start-pause-button" aria-label="Start timer">Start</button>
+            <button id="reset-button" aria-label="Reset timer">Reset</button>
+        </div>        <div class="permissions-message" id="permissions-message" role="alert" aria-live="assertive">
+            <p>Please enable audio permissions for timer notifications to work.</p>
+            <p>Click the speaker icon in your browser address bar and allow sound.</p>
+        </div>
+        
+        <!-- Notification Settings Section -->
+        <div class="settings-section">
+            <details>
+                <summary>Notification Settings</summary>
+                <div class="settings-controls">
+                    <div class="setting-item">
+                        <label for="notification-repeats">Notification Repeats:</label>
+                        <input 
+                            type="number" 
+                            id="notification-repeats" 
+                            min="1" 
+                            max="10" 
+                            value="3"
+                            aria-label="Number of times to repeat notification"
+                        >
+                    </div>
+                    <div class="setting-item">
+                        <button id="test-notification-button" aria-label="Test notifications">
+                            Test Notifications
+                        </button>
+                    </div>
+                </div>
+            </details>
+        </div>
+        
+        <!-- Hidden region for assistive technology announcements -->
+        <div id="aria-live-region" class="sr-only" aria-live="assertive"></div>
+        
+        <!-- Timer status for screen readers -->
+        <div id="timer-status" class="sr-only" aria-live="polite"></div>
+    </main><script>        // DOM Elements
+        const timerInput = document.getElementById('timer-input');
+        const timerDisplay = document.getElementById('timer-display');
+        const startPauseButton = document.getElementById('start-pause-button');
+        const resetButton = document.getElementById('reset-button');
+        const inputError = document.getElementById('input-error');
+        const permissionsMessage = document.getElementById('permissions-message');
+        const notificationRepeats = document.getElementById('notification-repeats');
+        const testNotificationButton = document.getElementById('test-notification-button');
+        
+        // Timer state
+        let initialTimeInSeconds = 25 * 60; // Default to 25 minutes
+        let timeLeftInSeconds = initialTimeInSeconds;
+        let timerInterval = null;
+        let isTimerRunning = false;        
+        
+        // Audio elements
+        let audioContext = null;
+        let audioBuffer = null;
+        let audioInitialized = false;
+        let audioPermissionGranted = false;
+        
+        // Notification settings and state
+        let notificationRepeatCount = 3; // Default number of repeats
+        let notificationRepeatInterval = null; // Interval for repeating notifications
+        let notificationCount = 0; // Counter for notification repetitions
+        let notificationDismissed = false; // Flag to track if notification was acknowledged
+        let notificationPermissionState = 'default'; // Track notification permission: 'granted', 'denied', or 'default'
+        
+        // Document visibility change detection
+        let documentHidden = false;
+        
+        // Initialize the timer display with the input value
+        function initializeTimerDisplay() {
+            // Trim input to remove any whitespace
+            const trimmedInput = timerInput.value.trim();
+            
+            // Check if the input is empty
+            if (trimmedInput === '') {
+                showError('Please enter a number');
+                return;
+            }
+            
+            // Check if it contains non-numeric characters
+            if (!/^\d+$/.test(trimmedInput)) {
+                showError('Please enter numbers only');
+                return;
+            }
+            
+            const inputValue = parseInt(trimmedInput, 10);
+            
+            // Validate the parsed number
+            if (inputValue <= 0) {
+                showError('Number must be greater than 0');
+            } else if (inputValue > 999) {
+                showError('Number must be 999 or less');
+            } else if (isValidInput(inputValue)) {
+                initialTimeInSeconds = inputValue * 60;
+                timeLeftInSeconds = initialTimeInSeconds;
+                updateTimerDisplay();
+                hideError();
+                
+                // Log for debugging
+                console.log(`Timer set to ${inputValue} minutes (${initialTimeInSeconds} seconds)`);
+            } else {
+                showError('Please enter a valid whole number between 1 and 999');
+            }
+        }
+
+        // Update the timer display with the current time
+        function updateTimerDisplay() {
+            const minutes = Math.floor(timeLeftInSeconds / 60);
+            const seconds = timeLeftInSeconds % 60;
+            
+            // Format to ensure leading zeros
+            const formattedMinutes = minutes.toString().padStart(2, '0');
+            const formattedSeconds = seconds.toString().padStart(2, '0');
+            
+            timerDisplay.textContent = `${formattedMinutes}:${formattedSeconds}`;
+        }        // Validate the timer input with more comprehensive checks
+        function isValidInput(value) {
+            // Check if it's a number, positive, within limits, and not a decimal
+            return !isNaN(value) && 
+                   value > 0 && 
+                   value <= 999 && 
+                   Math.floor(value) === value;
+        }
+
+        // Show error message with visual indication
+        function showError(message) {
+            inputError.textContent = message;
+            inputError.style.visibility = 'visible';
+            
+            // Add visual feedback by changing the input border color
+            timerInput.style.borderColor = '#e74c3c';
+            timerInput.style.backgroundColor = '#fdedec';
+            
+            // Announce error for screen readers
+            const ariaLiveRegion = document.getElementById('aria-live-region');
+            if (ariaLiveRegion) {
+                ariaLiveRegion.textContent = message;
+            }
+            
+            // Focus on the input for immediate correction
+            timerInput.focus();
+        }
+
+        // Hide error message and reset visual styling
+        function hideError() {
+            inputError.style.visibility = 'hidden';
+            
+            // Reset visual styling
+            timerInput.style.borderColor = '#ddd';
+            timerInput.style.backgroundColor = '';
+            
+            // Clear screen reader announcement
+            const ariaLiveRegion = document.getElementById('aria-live-region');
+            if (ariaLiveRegion) {
+                ariaLiveRegion.textContent = '';
+            }
+        }
+
+        // Start or pause the timer
+        function toggleTimer() {
+            if (isTimerRunning) {
+                pauseTimer();
+            } else {
+                startTimer();
+            }
+        }        // Start the timer
+        function startTimer() {
+            // Validate input before starting timer
+            const trimmedInput = timerInput.value.trim();
+            if (trimmedInput === '' || !/^\d+$/.test(trimmedInput)) {
+                showError('Please enter a valid number before starting the timer');
+                return;
+            }
+            
+            // Initialize timer if not already running
+            if (!timerInterval) {
+                // Get the input value when starting (in case it changed)
+                initializeTimerDisplay();
+                
+                // Try to initialize audio if not already done
+                if (!audioInitialized) {
+                    initializeAudio();
+                } else if (audioContext && audioContext.state === 'suspended') {
+                    // Try to resume the audio context (needed for Chrome's autoplay policy)
+                    audioContext.resume().then(() => {
+                        console.log('AudioContext resumed successfully');
+                    }).catch(error => {
+                        console.error('Failed to resume AudioContext:', error);
+                        // Show permission message only if we haven't shown it already
+                        permissionsMessage.style.display = 'block';
+                    });
+                }
+            }
+            
+            isTimerRunning = true;
+            startPauseButton.textContent = 'Pause';
+            startPauseButton.setAttribute('aria-label', 'Pause timer');
+
+            // Get the current timestamp for more accurate timing
+            let lastUpdateTime = Date.now();
+            
+            // Announce to screen readers that timer has started
+            updateTimerStatus('Timer started');
+            
+            // Create a new interval that updates every second
+            timerInterval = setInterval(() => {
+                // Calculate elapsed time since last update
+                const currentTime = Date.now();
+                const elapsedSeconds = Math.floor((currentTime - lastUpdateTime) / 1000);
+                lastUpdateTime = currentTime;
+                
+                // Only update if at least 1 second has passed
+                if (elapsedSeconds > 0) {
+                    // Don't go below zero
+                    timeLeftInSeconds = Math.max(0, timeLeftInSeconds - elapsedSeconds);
+                    updateTimerDisplay();
+                    
+                    // Announce time remaining at specific intervals for screen readers
+                    if (timeLeftInSeconds <= 10 && timeLeftInSeconds > 0) {
+                        // Announce countdown for last 10 seconds
+                        updateTimerStatus(`${timeLeftInSeconds} seconds remaining`);
+                    } else if (timeLeftInSeconds === 30 || timeLeftInSeconds === 60) {
+                        // Announce at 30 seconds and 1 minute remaining
+                        const minutesLeft = Math.floor(timeLeftInSeconds / 60);
+                        const secondsLeft = timeLeftInSeconds % 60;
+                        
+                        if (minutesLeft > 0) {
+                            updateTimerStatus(`${minutesLeft} minute${minutesLeft > 1 ? 's' : ''} and ${secondsLeft} seconds remaining`);
+                        } else {
+                            updateTimerStatus(`${secondsLeft} seconds remaining`);
+                        }
+                    }
+                      // Check if timer has completed
+                    if (timeLeftInSeconds === 0) {
+                        // Timer completed
+                        pauseTimer();
+                        
+                        // Reset notification state
+                        notificationCount = 0;
+                        notificationDismissed = false;
+                        
+                        // Start playing repeated notifications
+                        startRepeatingNotifications();
+                        
+                        resetTimerDisplay();
+                        
+                        // Announce timer completion for screen readers
+                        updateTimerStatus('Timer finished. Time to take a break!');
+                    }
+                }
+            }, 1000);
+
+            // Log for debugging
+            console.log('Timer started');
+        }
+        
+        // Update timer status for screen readers
+        function updateTimerStatus(message) {
+            const timerStatus = document.getElementById('timer-status');
+            if (timerStatus) {
+                timerStatus.textContent = message;
+            }
+            console.log('Timer status:', message); // For debugging
+        }
+          // Function to start repeating notifications
+        function startRepeatingNotifications() {
+            // Play the first notification immediately
+            playNotificationSound();
+            tryShowNotification();
+            notificationCount++;
+            
+            // Set up repeating notifications
+            notificationRepeatInterval = setInterval(() => {
+                // Stop if notifications were acknowledged or max repeat reached
+                if (notificationDismissed || notificationCount >= notificationRepeatCount) {
+                    stopRepeatingNotifications();
+                    return;
+                }
+                
+                // Play notification again
+                playNotificationSound();
+                tryShowNotification();
+                notificationCount++;
+                
+                console.log(`Playing notification ${notificationCount} of ${notificationRepeatCount}`);
+            }, 10000); // Repeat every 10 seconds
+            
+            console.log('Started repeating notifications');
+        }
+        
+        // Function to stop repeating notifications
+        function stopRepeatingNotifications() {
+            if (notificationRepeatInterval) {
+                clearInterval(notificationRepeatInterval);
+                notificationRepeatInterval = null;
+                notificationDismissed = true;
+                console.log('Stopped repeating notifications');
+            }
+        }
+          // Check and update notification permission status
+        function checkNotificationPermission() {
+            if ('Notification' in window) {
+                notificationPermissionState = Notification.permission;
+                console.log(`Notification permission status: ${notificationPermissionState}`);
+                
+                // Update UI based on permission status
+                updateUIForPermissionState();
+                
+                return notificationPermissionState;
+            } else {
+                notificationPermissionState = 'unsupported';
+                console.log('Notifications not supported in this browser');
+                updateUIForPermissionState();
+                return 'unsupported';
+            }
+        }
+        
+        // Update UI elements based on current permission state
+        function updateUIForPermissionState() {
+            // Show appropriate message based on permission state
+            if (notificationPermissionState === 'denied') {
+                permissionsMessage.style.display = 'block';
+                permissionsMessage.innerHTML = `
+                    <p>Notification permission denied. Timer will use <strong>enhanced visual and louder audio alerts</strong> to compensate.</p>
+                    <p>To enable notifications, click the <button id="request-permission-button" class="small-button">Request Permission</button> button or update your browser settings.</p>
+                `;
+                
+                // Add event listener to the request permission button
+                const requestPermissionButton = document.getElementById('request-permission-button');
+                if (requestPermissionButton) {
+                    requestPermissionButton.addEventListener('click', requestNotificationPermission);
+                }
+            } else if (notificationPermissionState === 'default') {
+                permissionsMessage.style.display = 'block';
+                permissionsMessage.innerHTML = `
+                    <p>Please allow notifications for the best experience with this timer.</p>
+                    <p>Without notification permissions, the timer will use louder sounds and stronger visual alerts.</p>
+                    <p><button id="request-permission-button" class="small-button">Enable Notifications</button></p>
+                `;
+                
+                // Add event listener to the request permission button
+                const requestPermissionButton = document.getElementById('request-permission-button');
+                if (requestPermissionButton) {
+                    requestPermissionButton.addEventListener('click', requestNotificationPermission);
+                }
+            } else {
+                permissionsMessage.style.display = 'none';
+            }
+        }
+        
+        // Request notification permission
+        function requestNotificationPermission() {
+            if ('Notification' in window) {
+                Notification.requestPermission().then(permission => {
+                    notificationPermissionState = permission;
+                    console.log(`Notification permission status updated: ${permission}`);
+                    updateUIForPermissionState();
+                    
+                    // If permission granted, show a confirmation
+                    if (permission === 'granted') {
+                        const notificationTest = new Notification('Notifications Enabled', {
+                            body: 'You will now receive notifications when the timer completes.',
+                            icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="%233498db"/></svg>'
+                        });
+                        
+                        // Close the notification after 3 seconds
+                        setTimeout(() => notificationTest.close(), 3000);
+                    }
+                });
+            }
+        }
+          // Try to show a system notification when timer completes
+        function tryShowNotification() {
+            // Update permission status first
+            checkNotificationPermission();
+            
+            if ('Notification' in window) {
+                if (notificationPermissionState === 'granted') {
+                    const notification = new Notification('Pomodoro Timer Complete', {
+                        body: 'Time to take a break! Click to acknowledge.',
+                        icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="%23e74c3c"/></svg>',
+                        requireInteraction: true // Keep notification until user interacts with it
+                    });
+                    
+                    // Add click event listener to stop repeating notifications
+                    notification.onclick = function() {
+                        stopRepeatingNotifications();
+                        this.close();
+                        window.focus(); // Focus the window when notification is clicked
+                    };
+                    
+                    // Use normal visual effects with notifications
+                    flashTimerDisplay('normal');
+                    return true; // Notification was shown
+                } else if (notificationPermissionState === 'default') {
+                    // Ask for permission
+                    Notification.requestPermission().then(permission => {
+                        notificationPermissionState = permission;
+                        updateUIForPermissionState();
+                        
+                        // If permission was just granted, show notification
+                        if (permission === 'granted') {
+                            const notification = new Notification('Pomodoro Timer Complete', {
+                                body: 'Time to take a break! Click to acknowledge.',
+                                icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="%23e74c3c"/></svg>',
+                                requireInteraction: true // Keep notification until user interacts with it
+                            });
+                            
+                            // Add click event listener to stop repeating notifications
+                            notification.onclick = function() {
+                                stopRepeatingNotifications();
+                                this.close();
+                                window.focus();
+                            };
+                            
+                            // Use normal visual effects with notifications
+                            flashTimerDisplay('normal');
+                        } else {
+                            // Permission denied, enhance audio and visual feedback
+                            enhanceAlternativeNotifications();
+                        }
+                    });
+                    
+                    // While waiting for permission, use medium feedback
+                    flashTimerDisplay('medium');
+                    return false; // Notification wasn't shown yet
+                } else {
+                    // Permission denied, enhance other notification methods
+                    enhanceAlternativeNotifications();
+                    return false; // Notification wasn't shown
+                }
+            } else {
+                // Notifications not supported
+                enhanceAlternativeNotifications();
+                return false; // Notification wasn't shown
+            }
+        }
+        
+        // Enhance audio and visual feedback when system notifications aren't available
+        function enhanceAlternativeNotifications() {
+            console.log("Using enhanced alternative notifications due to permission denial or lack of support");
+            
+            // Use stronger visual feedback 
+            flashTimerDisplay('high');
+            
+            // Make visual notification more prominent
+            timerDisplay.style.animation = "flashStrong 0.5s 12 alternate";
+            timerDisplay.style.border = "3px solid #ff0000";
+            
+            // Add an additional visual element to make it more noticeable 
+            timerDisplay.style.boxShadow = "0 0 15px rgba(255, 0, 0, 0.7)";
+            
+            // Update message for screen readers
+            updateTimerStatus('Timer complete! Time to take a break!');
+            
+            // Play sound with increased volume if audio is available
+            if (audioInitialized && audioBuffer && audioContext) {
+                try {
+                    // Play twice with a short delay to make it more noticeable
+                    playEnhancedSound(2.0); // First sound at high volume
+                    
+                    // Play second sound after a short delay
+                    setTimeout(() => {
+                        playEnhancedSound(2.2); // Second sound at even higher volume
+                    }, 700);
+                } catch (error) {
+                    console.error("Failed to play enhanced audio:", error);
+                }
+            }
+        }
+        
+        // Helper function to play enhanced sound
+        function playEnhancedSound(volumeLevel) {
+            try {
+                const gainNode = audioContext.createGain();
+                gainNode.gain.value = volumeLevel; // Much louder to compensate for no notifications
+                
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                source.start(0);
+                console.log(`Playing enhanced sound at volume level: ${volumeLevel}`);
+            } catch (error) {
+                console.error("Failed to play enhanced audio:", error);
+            }
+        }
+        
+        // Pause the timer
+        function pauseTimer() {
+            isTimerRunning = false;
+            startPauseButton.textContent = 'Start';
+            startPauseButton.setAttribute('aria-label', 'Start timer');
+            
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+
+            // Announce to screen readers
+            if (timeLeftInSeconds > 0) {
+                updateTimerStatus('Timer paused');
+            }
+
+            // Log for debugging
+            console.log('Timer paused');
+        }
+
+        // Reset the timer to initial value
+        function resetTimer() {
+            pauseTimer();
+            resetTimerDisplay();
+
+            // Log for debugging
+            console.log('Timer reset');
+        }        // Reset the timer display to the initial time
+        function resetTimerDisplay() {
+            // Get the current input value
+            const trimmedInput = timerInput.value.trim();
+            
+            // If the input is invalid, set to a default value
+            if (trimmedInput === '' || !/^\d+$/.test(trimmedInput)) {
+                // Reset to default of 25 minutes if input is invalid
+                timerInput.value = '25';
+                initialTimeInSeconds = 25 * 60;
+                timeLeftInSeconds = initialTimeInSeconds;
+                updateTimerDisplay();
+                hideError();
+                console.log('Invalid input detected during reset, defaulting to 25 minutes');
+                return;
+            }
+            
+            const inputValue = parseInt(trimmedInput, 10);
+            
+            if (isValidInput(inputValue)) {
+                initialTimeInSeconds = inputValue * 60;
+                timeLeftInSeconds = initialTimeInSeconds;
+                updateTimerDisplay();
+                hideError();
+            } else {
+                // Handle edge cases by defaulting to acceptable values
+                let correctedValue;
+                
+                if (inputValue <= 0) correctedValue = 1;
+                else if (inputValue > 999) correctedValue = 999;
+                else correctedValue = Math.floor(inputValue); // Handle decimals
+                
+                timerInput.value = correctedValue.toString();
+                initialTimeInSeconds = correctedValue * 60;
+                timeLeftInSeconds = initialTimeInSeconds;
+                updateTimerDisplay();
+                      console.log(`Input value ${inputValue} was invalid, corrected to ${correctedValue}`);
+            }
+        }
+        
+        // Initialize Web Audio APIfor sound notifications
+        function initializeAudio() {
+            try {
+                // Create an audio context
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Chrome's autoplay policy requires user interaction before audio can play
+                // We'll resume the audio context when the user clicks start
+                if (audioContext.state === 'suspended') {
+                    console.log('Audio context is suspended, waiting for user interaction');
+                }
+                
+                // Create a simple beep sound
+                createBeepSound();
+                
+                audioInitialized = true;
+                audioPermissionGranted = true;
+                console.log('Audio initialized successfully');
+            } catch (error) {
+                console.error('Error initializing audio:', error);
+                permissionsMessage.style.display = 'block';
+                audioInitialized = false;
+                audioPermissionGranted = false;
+            }
+        }
+
+        // Create a simple beep sound buffer
+        function createBeepSound() {
+            // Create a 2-second buffer at the sample rate of the AudioContext
+            const sampleRate = audioContext.sampleRate;
+            const bufferSize = 2 * sampleRate; // 2 seconds buffer
+            audioBuffer = audioContext.createBuffer(1, bufferSize, sampleRate);
+            
+            // Fill the buffer with a simple beep sound (sine wave)
+            const channelData = audioBuffer.getChannelData(0);
+            
+            // Generate a pleasant notification sound (a combination of tones)
+            const frequencies = [830, 1200]; // Frequencies in Hz - pleasant notification tone
+            const durations = [0.3, 0.7]; // Durations in seconds
+            
+            let currentSample = 0;
+            
+            // Generate first tone
+            for (let i = 0; i < durations[0] * sampleRate; i++) {
+                channelData[currentSample] = Math.sin(2 * Math.PI * frequencies[0] * i / sampleRate) * 0.5;
+                currentSample++;
+            }
+            
+            // Small gap between tones
+            const gapSamples = 0.05 * sampleRate; // 50ms gap
+            for (let i = 0; i < gapSamples; i++) {
+                channelData[currentSample] = 0;
+                currentSample++;
+            }
+            
+            // Generate second tone
+            for (let i = 0; i < durations[1] * sampleRate; i++) {
+                channelData[currentSample] = Math.sin(2 * Math.PI * frequencies[1] * i / sampleRate) * 0.5;
+                currentSample++;
+            }
+            
+            console.log('Beep sound created successfully');
+        }        // Play notification sound with enhanced reliability for background tabs
+        function playNotificationSound() {
+            // Check notification permission state
+            checkNotificationPermission();
+            
+            if (!audioInitialized || !audioBuffer) {
+                console.error('Audio not initialized or sound buffer not created');
+                // Try to initialize audio again
+                initializeAudio();
+                return;
+            }
+            
+            // Adjust audio behavior based on notification permission
+            let volumeLevel = 1.0;
+            
+            // If notifications are denied or not supported, make audio louder as a compensation
+            if (notificationPermissionState === 'denied' || notificationPermissionState === 'unsupported') {
+                volumeLevel = 2.0; // Much louder sound when notifications aren't available
+                console.log('Significantly increasing audio volume due to unavailable notifications');
+            } else if (notificationPermissionState === 'default') {
+                volumeLevel = 1.5; // Somewhat louder for default permission state
+                console.log('Moderately increasing audio volume due to default notification permission');
+            }
+            
+            try {
+                // Ensure audio context is running (required by Chrome's autoplay policy)
+                if (audioContext.state === 'suspended') {
+                    // Use more aggressive methods to try to resume audio context if in background
+                    const resumeAudio = async () => {
+                        try {
+                            await audioContext.resume();
+                            console.log('AudioContext resumed successfully');
+                            playSound(volumeLevel);
+                        } catch (error) {
+                            console.error('Failed to resume AudioContext:', error);
+                            updateUIForPermissionState(); // Update the UI for audio permission issues
+                            
+                            // If we're in a background tab, we might need to use a fallback method
+                            if (documentHidden) {
+                                console.log('Attempting fallback audio method for background tab');
+                                tryFallbackAudio(volumeLevel);
+                            }
+                        }
+                    };
+                    
+                    resumeAudio();
+                } else {
+                    playSound(volumeLevel);
+                }
+            } catch (error) {
+                console.error('Error playing notification sound:', error);
+                updateUIForPermissionState();
+                tryFallbackAudio(volumeLevel);
+            }
+              // Helper function to actually play the sound
+            function playSound(volume = 1.0) {
+                try {
+                    // Create a sound source with longer duration for better chance of being heard
+                    const source = audioContext.createBufferSource();
+                    source.buffer = audioBuffer;
+                    
+                    // Add a gain node for volume control
+                    const gainNode = audioContext.createGain();
+                    gainNode.gain.value = volume; // Use the provided volume level
+                    
+                    // Connect the source through the gain node to the destination
+                    source.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    
+                    // Play the sound
+                    source.start(0);
+                    
+                    console.log(`Notification sound played (volume: ${volume})`);
+                    
+                    // Flash the timer display visually as well (for accessibility)
+                    // Adjust flash intensity based on notification permission
+                    const flashIntensity = notificationPermissionState === 'denied' ? 'high' : 'normal';
+                    flashTimerDisplay(flashIntensity);
+                } catch (error) {
+                    console.error('Error in playSound function:', error);
+                    tryFallbackAudio(volume);
+                }
+            }
+            
+            // Fallback audio method using Audio API which might work better in some background cases
+            function tryFallbackAudio(volume = 1.0) {
+                try {
+                    // Create a short beep using the Audio API
+                    const audioElement = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAAABMSVNUEAAAAENyZWF0ZWQgd2l0aCBTb3VuZCBFZGl0b3IuUEVBS5cAAABQRUFLAAAAACwAAAAAHACAP+Wq5j8AACBAMzNzPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAUEVBSwAAAAAAAIA/AAAAAFRJTEUAAAAAAQAAADEAAABGSUZZAAAAAAAA');
+                    audioElement.volume = Math.min(volume, 1.0); // Ensure volume doesn't exceed 1.0
+                    
+                    // Try to play the sound
+                    const playPromise = audioElement.play();
+                    if (playPromise !== undefined) {
+                        playPromise.then(() => {
+                            console.log(`Fallback audio played (volume: ${volume})`);
+                        }).catch(error => {
+                            console.error('Fallback audio playback failed:', error);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error in fallback audio method:', error);
+                }
+            }        }
+        
+        // Enhanced flash timer display for more prominent visual notification
+        function flashTimerDisplay(intensity = 'normal') {
+            // Store original styles
+            const originalColor = timerDisplay.style.color || '';
+            const originalBackground = timerDisplay.style.backgroundColor || '';
+            const originalTransform = timerDisplay.style.transform || '';
+            const originalBorder = timerDisplay.style.border || '';
+            const originalPadding = timerDisplay.style.padding || '';
+            const originalBorderRadius = timerDisplay.style.borderRadius || '';
+            const originalBoxShadow = timerDisplay.style.boxShadow || '';
+            
+            // Set counter variables
+            let flashCount = 0;
+            
+            // Adjust intensity based on notification permission state if not explicitly set
+            if (notificationPermissionState === 'denied' && intensity === 'normal') {
+                intensity = 'high'; // Increase intensity when notifications are denied
+                console.log('Increasing flash intensity due to denied notification permission');
+            } else if (notificationPermissionState === 'unsupported' && intensity === 'normal') {
+                intensity = 'high'; // Increase intensity when notifications are unsupported
+                console.log('Increasing flash intensity due to unsupported notifications');
+            }
+            
+            // Adjust flash parameters based on intensity
+            let maxFlashes = 10;
+            let flashSpeed = 500;
+            let scaleEffect = 1.05;
+            
+            if (intensity === 'high') {
+                maxFlashes = 20;
+                flashSpeed = 250;
+                scaleEffect = 1.15;
+            } else if (intensity === 'medium') {
+                maxFlashes = 15;
+                flashSpeed = 350;
+                scaleEffect = 1.1;
+            }
+            
+            if (notificationDismissed) {
+                maxFlashes = 5; // Fewer flashes if already acknowledged
+            }
+            
+            // Add border for additional visual prominence
+            timerDisplay.style.border = '2px solid #ff0000';
+            timerDisplay.style.borderRadius = '4px';
+            timerDisplay.style.padding = '0.5rem';
+            
+            // Create flash interval
+            const flashInterval = setInterval(function() {
+                if (flashCount >= maxFlashes || notificationDismissed) {
+                    // Reset to original styles when done
+                    clearInterval(flashInterval);
+                    timerDisplay.style.color = originalColor;
+                    timerDisplay.style.backgroundColor = originalBackground;
+                    timerDisplay.style.transform = originalTransform;
+                    timerDisplay.style.transition = '';
+                    timerDisplay.style.boxShadow = originalBoxShadow;
+                    timerDisplay.style.border = originalBorder;
+                    timerDisplay.style.borderRadius = originalBorderRadius;
+                    timerDisplay.style.padding = originalPadding;
+                    return;
+                }
+                
+                // Toggle styles
+                if (flashCount % 2 === 0) {
+                    // Highlight state - use more intense colors for higher intensity
+                    if (intensity === 'high') {
+                        timerDisplay.style.color = '#ffffff';
+                        timerDisplay.style.backgroundColor = '#ff3131';
+                        timerDisplay.style.boxShadow = '0 0 15px rgba(255, 0, 0, 0.8)';
+                    } else {
+                        timerDisplay.style.color = '#fff';
+                        timerDisplay.style.backgroundColor = '#e74c3c';
+                        timerDisplay.style.boxShadow = '0 0 10px rgba(255, 0, 0, 0.5)';
+                    }
+                    timerDisplay.style.transform = `scale(${scaleEffect})`;
+                    timerDisplay.style.transition = 'all 0.2s ease';
+                } else {
+                    // Return to normal state
+                    timerDisplay.style.color = '#e74c3c';
+                    timerDisplay.style.backgroundColor = '#fff';
+                    timerDisplay.style.transform = 'scale(1.0)';
+                    timerDisplay.style.transition = 'all 0.2s ease';
+                    timerDisplay.style.boxShadow = '';
+                }
+                
+                flashCount++;
+            }, flashSpeed);
+        }
+        
+        // Handle visibility change to ensure audio works in background
+        document.addEventListener('visibilitychange', () => {
+            documentHidden = document.hidden;
+            console.log('Document visibility changed, hidden:', documentHidden);
+            
+            // If the document becomes visible again and audio was tried while hidden,
+            // we might need to request permission again or resume the audio context
+            if (!documentHidden && audioContext && audioContext.state === 'suspended') {
+                console.log('Document visible again, attempting to resume audio context');
+                audioContext.resume().catch(error => {
+                    console.error('Failed to resume AudioContext:', error);
+                });
+            }
+        });        // Function to acknowledge notifications when user interacts with the app
+        function acknowledgeNotifications() {
+            if (notificationRepeatInterval) {
+                stopRepeatingNotifications();
+                console.log('Notifications acknowledged through user interaction');
+            }
+        }
+        
+        // Event listeners
+        startPauseButton.addEventListener('click', function() {
+            acknowledgeNotifications();
+            toggleTimer();
+        });
+        resetButton.addEventListener('click', function() {
+            acknowledgeNotifications();
+            resetTimer();
+        });
+        timerInput.addEventListener('change', initializeTimerDisplay);
+        
+        // Enhanced input validation during typing
+        timerInput.addEventListener('input', function() {
+            // Limit to 3 digits
+            if (this.value.length > 3) {
+                this.value = this.value.slice(0, 3);
+            }
+            
+            // Remove any non-numeric characters immediately
+            this.value = this.value.replace(/[^0-9]/g, '');
+            
+            // Auto-hide error message when user starts correcting input
+            if (inputError.style.visibility === 'visible' && this.value !== '') {
+                hideError();
+            }
+        });
+        
+        // Initialize notification permission status
+        checkNotificationPermission();
+        
+        // Test notification button
+        testNotificationButton.addEventListener('click', function() {
+            // Update notification repeat count from input
+            notificationRepeatCount = parseInt(notificationRepeats.value, 10) || 3;
+            console.log(`Testing notifications with ${notificationRepeatCount} repeats`);
+            
+            // Reset notification state
+            notificationCount = 0;
+            notificationDismissed = false;
+            
+            // Show test notification
+            startRepeatingNotifications();
+        });
+        
+        // Add keyboard support for starting/pausing with space or enter on the button
+        startPauseButton.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                toggleTimer();
+            }
+        });
+        
+        // Add keyboard support for reset button
+        resetButton.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                resetTimer();
+            }
+        });
+        
+        // Add form submission handling to prevent page reload on enter
+        timerInput.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                initializeTimerDisplay();
+                startTimer();
+            }
+        });
+        
+        // Event listener for any user interaction to help with audio permission
+        document.addEventListener('click', function() {
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume().then(() => {
+                    console.log('AudioContext resumed by user interaction');
+                }).catch(error => {
+                    console.error('Failed to resume AudioContext despite user interaction:', error);
+                });
+            }
+        }, { once: true });
+        
+        // Event listener for page unload/beforeunload to clean up resources
+        window.addEventListener('beforeunload', function() {
+            if (audioContext) {
+                audioContext.close().then(() => {
+                    console.log('AudioContext closed cleanly');
+                }).catch(error => {
+                    console.error('Error closing AudioContext:', error);
+                });
+            }
+        });        // Add event listener for notification repeat setting
+        notificationRepeats.addEventListener('change', function() {
+            const value = parseInt(this.value, 10);
+            if (!isNaN(value) && value > 0 && value <= 10) {
+                notificationRepeatCount = value;
+                console.log(`Notification repeats set to ${value}`);
+            } else {
+                // Reset to default if invalid
+                this.value = 3;
+                notificationRepeatCount = 3;
+            }
+        });
+        
+        // Add event listener for test notification button
+        testNotificationButton.addEventListener('click', function() {
+            // Stop any existing notifications
+            stopRepeatingNotifications();
+            
+            // Initialize audio if not already done
+            if (!audioInitialized) {
+                initializeAudio();
+            }
+            
+            // Show a test notification
+            console.log('Testing notifications');
+            updateTimerStatus('Testing notification sound');
+            
+            // Play test sound
+            playNotificationSound();
+            
+            // Show test system notification
+            if ('Notification' in window) {
+                if (Notification.permission === 'granted') {
+                    const notification = new Notification('Test Notification', {
+                        body: 'This is a test notification. Click to dismiss.',
+                        icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="%233498db"/></svg>'
+                    });
+                    
+                    notification.onclick = function() {
+                        this.close();
+                    };
+                } else if (Notification.permission !== 'denied') {
+                    Notification.requestPermission().then(permission => {
+                        if (permission === 'granted') {
+                            const notification = new Notification('Test Notification', {
+                                body: 'This is a test notification. Click to dismiss.',
+                                icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="%233498db"/></svg>'
+                            });
+                            
+                            notification.onclick = function() {
+                                this.close();
+                            };
+                        } else {
+                            updateTimerStatus('Notification permission denied. Please enable notifications in your browser settings.');
+                        }
+                    });
+                } else {
+                    updateTimerStatus('Notification permission denied. Please enable notifications in your browser settings.');
+                }
+            }
+        });
+        
+        // Initialize the timer display on page load
+        initializeTimerDisplay();
+        
+        // Request notification permission early if not already granted/denied
+        if ('Notification' in window && notificationPermissionState === 'default') {
+            // Defer this to not block page load
+            setTimeout(() => {
+                requestNotificationPermission();
+            }, 3000);
+        }
+        
+        // Load notification settings from user preference (if any)
+        if (notificationRepeats) {
+            notificationRepeats.value = notificationRepeatCount.toString();
+        }
+        
+        // Log a welcome message with version information for debugging
+        console.log('Pomodoro Timer v1.1 initialized');
+        console.log('To run tests, open tests.js and follow instructions');
+
+        // Log for debugging
+        console.log('Pomodoro Timer initialized with enhanced notification system');
+    </script>
+</body>
+</html>

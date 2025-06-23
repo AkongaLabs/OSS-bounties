@@ -95,3 +95,4 @@ jspm_packages/
 
 # TernJS port file
 .tern-port
+.github/instructions/this.instructions.md
