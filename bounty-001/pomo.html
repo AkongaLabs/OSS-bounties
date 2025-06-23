@@ -1,0 +1,1618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zen Focus</title>
+    <meta name="description" content="Minimalist productivity timer with seamless background operation">
+    <style>
+        :root {
+            --zen-primary: #6366f1;
+            --zen-surface: #0f1419;
+            --zen-surface-alt: #1a1f2e;
+            --zen-text: #e2e8f0;
+            --zen-text-dim: #94a3b8;
+            --zen-accent: #22d3ee;
+            --zen-success: #10b981;
+            --zen-warning: #f59e0b;
+            --zen-error: #ef4444;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Segoe UI Variable', -apple-system, system-ui, sans-serif;
+            background: radial-gradient(ellipse at top, var(--zen-surface-alt) 0%, var(--zen-surface) 100%);
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            color: var(--zen-text);
+            font-weight: 400;
+            line-height: 1.5;
+        }        /* Overlay for permissions */
+        .access-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 20, 25, 0.95);
+            backdrop-filter: blur(12px);
+            display: grid;
+            place-items: center;
+            z-index: 100;
+            opacity: 1;
+            transition: opacity 0.4s ease;
+        }
+
+        .access-overlay.hidden {
+            display: none;
+        }
+
+        .access-card {
+            background: linear-gradient(135deg, var(--zen-surface-alt) 0%, rgba(99, 102, 241, 0.1) 100%);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 20px;
+            padding: 2.5rem;
+            max-width: 28rem;
+            margin: 1rem;
+            text-align: center;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .access-card h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            color: var(--zen-text);
+        }
+
+        .access-card p {
+            color: var(--zen-text-dim);
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+
+        .access-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .btn-access-primary {
+            background: var(--zen-primary);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 0.875rem 1.5rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.95rem;
+        }
+
+        .btn-access-primary:hover {
+            background: #5855eb;
+            transform: translateY(-1px);
+        }
+
+        .btn-access-ghost {
+            background: transparent;
+            color: var(--zen-text-dim);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            border-radius: 12px;
+            padding: 0.875rem 1.5rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.95rem;
+        }
+
+        .btn-access-ghost:hover {
+            background: rgba(148, 163, 184, 0.1);
+            color: var(--zen-text);
+        }
+
+        /* Main App Container */
+        .app-container {
+            width: 100%;
+            max-width: 600px;
+            padding: 0 24px;
+        }
+
+        .timer-container {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 32px;
+            padding: 48px 32px;
+            text-align: center;
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            
+        }
+
+        .container:hover {
+
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-weight: 600;
+            font-size: 2.5rem;
+            color: var(--accent-color);
+            text-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Timer circle styles */
+        .timer-circle-container {
+            position: relative;
+            width: 250px;
+            height: 250px;
+            margin: 0 auto 30px;
+        }
+
+        .timer-circle {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: rgba(0, 26, 51, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3),
+                        inset 0 5px 10px rgba(255, 255, 255, 0.1),
+                        inset 0 -5px 10px rgba(0, 0, 0, 0.2);
+            position: relative;
+            z-index: 1;
+            overflow: hidden;
+        }
+
+        .timer-progress {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: conic-gradient(
+                var(--accent-color) 0%, 
+                var(--accent-color) var(--progress), 
+                transparent var(--progress), 
+                transparent 100%
+            );
+            z-index: 0;
+            opacity: 0.6;
+        }
+
+        /* Timer display */
+        .timer-display {
+            font-size: 3.5rem;
+            font-weight: 700;
+            text-align: center;
+            color: var(--text-color);
+            text-shadow: 0 0 10px rgba(0, 230, 230, 0.5);
+            transition: color 0.3s ease;
+            z-index: 2;
+        }
+
+        .timer-completed {
+            color: var(--accent-color);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        /* Circle controls */
+        .circle-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .circle-btn {
+            background: rgba(0, 168, 168, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .circle-btn:hover {
+            background: rgba(0, 230, 230, 0.5);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .circle-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .circle-btn svg {
+            width: 28px;
+            height: 28px;
+            fill: var(--text-color);
+        }
+        
+        /* Input styles */
+        .input-group {
+            margin: 25px 0;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--accent-color);
+            text-align: center;
+        }
+
+        input {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            background: var(--input-bg);
+            color: var(--text-color);
+            font-size: 1.2rem;
+            font-family: 'Poppins', sans-serif;
+            box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+        }
+
+        input:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(0, 230, 230, 0.3), inset 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Button styles */
+        .btn {
+            display: inline-block;
+            padding: 12px 25px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: var(--text-color);
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            font-family: 'Poppins', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+            background: linear-gradient(135deg, var(--accent-color), var(--primary-color));
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: rgba(255, 255, 255, 0.1);
+            transform: rotate(30deg);
+            transition: transform 0.6s ease;
+            pointer-events: none;
+        }
+
+        .btn:hover::after {
+            transform: rotate(30deg) translate(10%, 10%);
+        }
+
+        .btn-primary {
+            width: 100%;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            border: 2px solid var(--primary-color);
+            padding: 10px 20px;
+        }        .btn-secondary:hover {
+            background: rgba(0, 168, 168, 0.2);
+        }
+
+        /* Main App Container */
+        .app-container {
+            width: 100%;
+            max-width: 600px;
+            padding: 0 24px;
+        }
+
+        .timer-container {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 32px;
+            padding: 48px 32px;
+            text-align: center;
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
+        }        /* Timer Input Section */
+        .timer-input-section {
+            margin-bottom: 48px;
+        }
+
+        .timer-input-section label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 16px;
+            color: rgba(255, 255, 255, 0.7);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .minutes-input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.08);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 20px 24px;
+            font-size: 24px;
+            font-weight: 600;
+            color: white;
+            text-align: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-family: inherit;
+        }
+
+        .minutes-input:focus {
+            outline: none;
+            border-color: rgba(0, 122, 255, 0.5);
+            background: rgba(255, 255, 255, 0.12);
+            box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+        }
+
+        .minutes-input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        /* Timer Display */
+        .timer-display {
+            font-size: 96px;
+            font-weight: 700;
+            margin: 48px 0;
+            font-variant-numeric: tabular-nums;
+            text-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            letter-spacing: -2px;
+            background: linear-gradient(145deg, #ffffff 0%, rgba(255, 255, 255, 0.8) 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }        /* Timer Controls */
+        .timer-controls {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .control-btn {
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 20px;
+            padding: 16px 32px;
+            font-size: 18px;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            min-width: 140px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .control-btn:hover {
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.1) 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .control-btn:active {
+            transform: translateY(0);
+        }
+
+        .control-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .control-btn.primary {
+            background: linear-gradient(145deg, #007aff 0%, #0056cc 100%);
+            border-color: rgba(0, 122, 255, 0.3);
+            box-shadow: 0 8px 24px rgba(0, 122, 255, 0.3);
+        }
+
+        .control-btn.primary:hover {
+            background: linear-gradient(145deg, #1a86ff 0%, #0066e6 100%);
+            box-shadow: 0 12px 32px rgba(0, 122, 255, 0.4);
+        }
+
+        .control-btn.stop {
+            background: linear-gradient(145deg, #ff3b30 0%, #d12b20 100%);
+            border-color: rgba(255, 59, 48, 0.3);
+            box-shadow: 0 8px 24px rgba(255, 59, 48, 0.3);
+        }
+
+        .control-btn.stop:hover {
+            background: linear-gradient(145deg, #ff5247 0%, #e13b31 100%);
+            box-shadow: 0 12px 32px rgba(255, 59, 48, 0.4);
+        }        /* Status Messages */        /* Status Messages - Fixed height to prevent layout shifts */
+        .status-message {
+            margin-top: 24px;
+            padding: 16px 24px;
+            border-radius: 16px;
+            font-size: 14px;
+            font-weight: 500;
+            text-align: center;
+            height: 54px; /* Fixed height to prevent layout shifts */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            pointer-events: none; /* Prevent interaction when hidden */
+            overflow: hidden; /* Prevent content overflow */
+            white-space: nowrap; /* Keep text on single line */
+            text-overflow: ellipsis; /* Show ellipsis for long text */
+        }
+
+        .status-message.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .status-success {
+            background: rgba(52, 199, 89, 0.15);
+            border: 1px solid rgba(52, 199, 89, 0.3);
+            color: #34c759;
+        }
+
+        .status-warning {
+            background: rgba(255, 159, 10, 0.15);
+            border: 1px solid rgba(255, 159, 10, 0.3);
+            color: #ff9f0a;
+        }
+
+        .status-error {
+            background: rgba(255, 59, 48, 0.15);
+            border: 1px solid rgba(255, 59, 48, 0.3);
+            color: #ff3b30;
+        }
+
+        /* Timer Completed Animation */
+        .timer-completed {
+            animation: pulseGlow 1s ease-in-out infinite;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { 
+                transform: scale(1);
+                text-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            }
+            50% { 
+                transform: scale(1.02);
+                text-shadow: 0 8px 32px rgba(52, 199, 89, 0.4);
+            }
+        }        /* Utility Classes */
+        .hidden {
+            display: none !important;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .timer-container {
+                padding: 32px 24px;
+            }
+            
+            .timer-display {
+                font-size: 72px;
+                margin: 32px 0;
+            }
+            
+            .minutes-input {
+                font-size: 20px;
+                padding: 16px 20px;
+            }
+            
+            .control-btn {
+                min-width: 120px;
+                padding: 14px 24px;
+                font-size: 16px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .app-container {
+                padding: 0 16px;
+            }
+            
+            .timer-display {
+                font-size: 56px;
+            }
+            
+            .timer-controls {
+                flex-direction: column;
+            }
+            
+            .control-btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>    <!-- Permission Modal -->
+    <div id="permissionModal" class="access-overlay hidden">
+        <div class="access-card">
+            <h2>🔔 Enable Notifications</h2>
+            <p>To ensure your timer works perfectly even when this tab is in the background, we need permission to play sounds and show notifications.</p>
+            <div class="access-actions">
+                <button class="btn-access-primary" id="enablePermissionsBtn">
+                    Enable Sound & Notifications
+                </button>
+                <button class="btn-access-ghost" id="skipPermissionsBtn">
+                    Skip for Now
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div class="app-container">
+        <div class="timer-container">
+            <div class="timer-input-section">
+                <label for="minutesInput">Minutes to Focus</label>
+                <input 
+                    type="number" 
+                    id="minutesInput" 
+                    class="minutes-input" 
+                    placeholder="25 minutes" 
+                    min="1" 
+                    max="999"
+                    value="25"
+                    aria-label="Timer duration in minutes"
+                >
+            </div>
+
+            <div class="timer-display" id="timerDisplay" aria-live="polite">
+                25:00
+            </div>
+
+            <div class="timer-controls">                <button 
+                    class="control-btn primary" 
+                    id="startPauseBtn" 
+                    aria-label="Start or pause timer"
+                >
+                    Start Focus
+                </button>
+                <button 
+                    class="control-btn stop hidden" 
+                    id="stopBtn" 
+                    aria-label="Stop and reset timer"
+                >
+                    Stop
+                </button>
+            </div>            <div id="statusMessage" class="status-message" aria-live="polite"></div>
+        </div>
+    </div><script>
+        // Core application state - centralized data store
+        const AppState = {
+            focus: {
+                active: false,
+                paused: false,
+                totalDuration: 1500, // 25 min default
+                remaining: 1500,
+                ticker: null,
+                sessionMinutes: 25,
+                sessionStart: null,
+                sessionEnd: null
+            },
+            media: {
+                context: null,
+                buffer: null,
+                ready: false
+            },
+            permissions: {
+                notifications: false,
+                audio: false
+            },            worker: {
+                registered: false,
+                timerActive: false
+            }
+        };
+
+        // UI Element References - cached for performance
+        const UI = {
+            durationInput: document.getElementById('minutesInput'),
+            clockDisplay: document.getElementById('timerDisplay'),
+            primaryAction: document.getElementById('startPauseBtn'),
+            resetAction: document.getElementById('stopBtn'),
+            feedback: document.getElementById('statusMessage'),
+            accessModal: document.getElementById('permissionModal')
+        };        // Audio Engine - Handles sound notifications
+        class AudioEngine {            static async initialize() {
+                try {
+                    AppState.media.context = new (window.AudioContext || window.webkitAudioContext)();
+                    
+                    if (AppState.media.context.state === 'suspended') {
+                        await AppState.media.context.resume();
+                    }
+                    
+                    // Generate notification sound
+                    await this.generateNotificationSound();
+                    
+                    AppState.media.ready = true;
+                    AppState.permissions.audio = true;
+                    
+                    console.log('Audio system initialized successfully');
+                    DisplayManager.showFeedback('🔊 Audio system ready', 'success');
+                    
+                    return true;
+                } catch (error) {
+                    console.warn('Audio initialization failed:', error);
+                    
+                    // Don't show feedback if this was a silent initialization attempt
+                    if (error.name === 'NotAllowedError' || error.message.includes('user activation')) {
+                        console.log('Audio initialization requires user interaction');
+                    } else {
+                        DisplayManager.showFeedback('⚠️ Audio system unavailable', 'warning');
+                    }
+                    return false;
+                }
+            }
+
+            static async generateNotificationSound() {
+                const sampleRate = AppState.media.context.sampleRate;
+                const duration = 0.8; // 800ms
+                const bufferLength = sampleRate * duration;
+                
+                AppState.media.buffer = AppState.media.context.createBuffer(1, bufferLength, sampleRate);
+                const channelData = AppState.media.buffer.getChannelData(0);
+                
+                // Generate a pleasant chime sound
+                for (let i = 0; i < bufferLength; i++) {
+                    const time = i / sampleRate;
+                    const envelope = Math.exp(-time * 2.5); // Decay envelope
+                    
+                    // Multiple harmonics for rich sound
+                    let sample = 0;
+                    sample += Math.sin(2 * Math.PI * 523.25 * time) * 0.4; // C5
+                    sample += Math.sin(2 * Math.PI * 659.25 * time) * 0.3; // E5
+                    sample += Math.sin(2 * Math.PI * 783.99 * time) * 0.2; // G5
+                    sample += Math.sin(2 * Math.PI * 1046.5 * time) * 0.1; // C6
+                    
+                    channelData[i] = sample * envelope * 0.3;
+                }
+            }            static playAlert() {
+                if (!AppState.media.ready || !AppState.media.buffer || !AppState.media.context) {
+                    console.warn('Audio not ready for notification sound');
+                    return;
+                }
+
+                try {
+                    const source = AppState.media.context.createBufferSource();
+                    source.buffer = AppState.media.buffer;
+                    
+                    // Add gain node for volume control
+                    const gainNode = AppState.media.context.createGain();
+                    gainNode.gain.setValueAtTime(0.7, AppState.media.context.currentTime);
+                    
+                    source.connect(gainNode);
+                    gainNode.connect(AppState.media.context.destination);
+                    source.start(0);
+                    
+                    console.log('Notification sound played');
+                } catch (error) {
+                    console.error('Audio playback failed:', error);
+                }
+            }
+
+            // Alias for backward compatibility with ServiceWorkerManager
+            static playCompletionSound() {
+                this.playAlert();
+            }
+        }// Notification Engine - Browser notifications
+        class NotificationEngine {
+            static async requestPermission() {
+                if (!('Notification' in window)) {
+                    console.warn('Browser does not support notifications');
+                    return false;
+                }
+
+                if (Notification.permission === 'granted') {
+                    AppState.permissions.notifications = true;
+                    return true;
+                }
+
+                if (Notification.permission === 'denied') {
+                    console.warn('Notification permission was denied');
+                    return false;
+                }
+
+                try {
+                    const permission = await Notification.requestPermission();
+                    AppState.permissions.notifications = permission === 'granted';
+                    console.log('Notification permission result:', permission);
+                    return AppState.permissions.notifications;
+                } catch (error) {
+                    console.error('Failed to request notification permission:', error);
+                    return false;
+                }
+            }            static broadcast(title, body) {
+                if (!AppState.permissions.notifications) {
+                    console.warn('Notifications not permitted - showing in console instead');
+                    console.log(`🔔 ${title}: ${body}`);
+                    return;
+                }
+
+                try {
+                    const notification = new Notification(title, {
+                        body: body,
+                        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="%236366f1"/><path d="M35 50l10 10 20-20" stroke="white" stroke-width="3" fill="none"/></svg>',
+                        badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="%236366f1"/></svg>',
+                        tag: 'zen-focus-timer',
+                        requireInteraction: false,
+                        vibrate: [200, 100, 200],
+                        silent: false
+                    });
+
+                    notification.onclick = () => {
+                        window.focus();
+                        notification.close();
+                    };
+
+                    // Auto-close after 8 seconds
+                    setTimeout(() => notification.close(), 8000);
+                    
+                    console.log('Browser notification shown');
+                } catch (error) {
+                    console.error('Failed to show notification:', error);
+                }
+            }
+
+            // Alias for backward compatibility with ServiceWorkerManager
+            static show(title, body) {
+                this.broadcast(title, body);
+            }
+        }// Display Manager - UI updates and feedback
+        class DisplayManager {            static showFeedback(message, type = 'info') {
+                if (!UI.feedback) return;
+
+                UI.feedback.textContent = message;
+                UI.feedback.className = `status-message status-${type} visible`;
+
+                // Auto-hide after 4 seconds with smooth opacity transition
+                setTimeout(() => {
+                    UI.feedback.classList.remove('visible');
+                }, 4000);
+            }
+
+            static hideAccessModal() {
+                console.log('Hiding access modal');
+                if (UI.accessModal) {
+                    UI.accessModal.classList.add('hidden');
+                }
+            }
+
+            static showAccessModal() {
+                console.log('Showing access modal');
+                if (UI.accessModal) {
+                    UI.accessModal.classList.remove('hidden');
+                } else {
+                    console.error('Access modal element not found!');
+                }
+            }
+        }
+
+        // Service Worker Manager - Background operation handler
+        class ServiceWorkerManager {
+            static async register() {
+                if (!('serviceWorker' in navigator)) {
+                    console.warn('Service Worker not supported');
+                    return null;
+                }
+
+                try {
+                    ServiceWorkerManager.registration = await navigator.serviceWorker.register('timer-worker.js');
+                    console.log('Zen Focus Service Worker registered:', ServiceWorkerManager.registration);
+                    
+                    // Wait for the service worker to be ready
+                    await navigator.serviceWorker.ready;
+                    ServiceWorkerManager.worker = navigator.serviceWorker.controller || ServiceWorkerManager.registration.active;
+                    
+                    // Set up message listener
+                    navigator.serviceWorker.addEventListener('message', ServiceWorkerManager.handleMessage.bind(ServiceWorkerManager));
+                    
+                    AppState.worker.registered = true;
+                    DisplayManager.showFeedback('Background operation enabled', 'success');
+                    
+                    // Check if there's an existing timer state
+                    ServiceWorkerManager.sendMessage({ type: 'GET_TIMER_STATE' });
+                    
+                    return ServiceWorkerManager.registration;
+                } catch (error) {
+                    console.warn('Service Worker registration failed:', error);
+                    DisplayManager.showFeedback('Background operation unavailable', 'warning');
+                    return null;
+                }
+            }
+
+            static sendMessage(message) {
+                if (!ServiceWorkerManager.worker) {
+                    console.warn('Service Worker not available for messaging');
+                    return;
+                }
+                
+                console.log('Sending message to Service Worker:', message);
+                ServiceWorkerManager.worker.postMessage(message);
+            }
+
+            static handleMessage(event) {
+                if (!event.data) return;
+                
+                console.log('Message from Service Worker:', event.data);
+                
+                switch (event.data.type) {
+                    case 'TIMER_STARTED':
+                        ServiceWorkerManager.onTimerStarted(event.data.timer);
+                        break;
+                    case 'TIMER_PAUSED':
+                        ServiceWorkerManager.onTimerPaused(event.data.timer);
+                        break;
+                    case 'TIMER_RESUMED':
+                        ServiceWorkerManager.onTimerResumed(event.data.timer);
+                        break;
+                    case 'TIMER_STOPPED':
+                        ServiceWorkerManager.onTimerStopped();
+                        break;
+                    case 'TIMER_COMPLETE':
+                        ServiceWorkerManager.onTimerComplete(event.data);
+                        break;
+                    case 'TIMER_TICK':
+                        ServiceWorkerManager.onTimerTick(event.data);
+                        break;
+                    case 'TIMER_STATE':
+                        ServiceWorkerManager.onTimerState(event.data.timer);
+                        break;
+                    case 'TIMER_ERROR':
+                        ServiceWorkerManager.onTimerError(event.data.message);
+                        break;
+                    case 'START_BREAK_SESSION':
+                        ServiceWorkerManager.onStartBreakSession();
+                        break;
+                    default:
+                        console.warn('Unknown message type from Service Worker:', event.data.type);
+                }
+            }
+
+            static onTimerStarted(timer) {
+                console.log('Timer started in service worker:', timer);
+                AppState.worker.timerActive = true;
+                focusSession.syncWithWorkerState(timer);
+            }
+
+            static onTimerPaused(timer) {
+                console.log('Timer paused in service worker:', timer);
+                focusSession.syncWithWorkerState(timer);
+            }
+
+            static onTimerResumed(timer) {
+                console.log('Timer resumed in service worker:', timer);
+                focusSession.syncWithWorkerState(timer);
+            }
+
+            static onTimerStopped() {
+                console.log('Timer stopped in service worker');
+                AppState.worker.timerActive = false;
+                focusSession.handleWorkerStopped();
+            }
+
+            static onTimerComplete(data) {
+                console.log('Timer completed in service worker:', data);
+                AppState.worker.timerActive = false;
+                
+                // Trigger completion in the frontend
+                focusSession.onCompletion();
+                
+                // Play audio notification
+                AudioEngine.playCompletionSound();
+                
+                // Show local notification as backup
+                NotificationEngine.show(
+                    '🧘 Zen Focus Complete!',
+                    'Your focus session has ended. Time for a mindful break.'
+                );
+            }
+
+            static onTimerTick(data) {
+                // Update the UI with the current remaining time
+                if (focusSession.currentState === focusSession.STATES.RUNNING) {
+                    const remainingSeconds = Math.max(0, Math.ceil(data.remaining / 1000));
+                    AppState.focus.remaining = remainingSeconds;
+                    focusSession.updateClockDisplay();
+                }
+            }
+
+            static onTimerState(timer) {
+                if (timer) {
+                    console.log('Restored timer state from service worker:', timer);
+                    AppState.worker.timerActive = true;
+                    focusSession.restoreFromWorkerState(timer);
+                } else {
+                    console.log('No active timer in service worker');
+                    AppState.worker.timerActive = false;
+                }
+            }
+
+            static onTimerError(message) {
+                console.error('Service Worker timer error:', message);
+                DisplayManager.showFeedback(`Timer error: ${message}`, 'error');
+            }
+
+            static onStartBreakSession() {
+                // User clicked "Start Break" from notification
+                console.log('Starting break session from notification');
+                focusSession.startBreakSession();
+            }
+
+            // Public API methods for timer control
+            static startTimer(duration, sessionType = 'focus') {
+                ServiceWorkerManager.sendMessage({
+                    type: 'START_TIMER',
+                    data: { duration, sessionType }
+                });
+            }
+
+            static pauseTimer() {
+                ServiceWorkerManager.sendMessage({ type: 'PAUSE_TIMER' });
+            }
+
+            static resumeTimer() {
+                ServiceWorkerManager.sendMessage({ type: 'RESUME_TIMER' });
+            }
+
+            static stopTimer() {
+                ServiceWorkerManager.sendMessage({ type: 'STOP_TIMER' });
+            }
+
+            static getTimerState() {
+                ServiceWorkerManager.sendMessage({ type: 'GET_TIMER_STATE' });
+            }
+        }
+
+        // Initialize static properties
+        ServiceWorkerManager.registration = null;
+        ServiceWorkerManager.worker = null;// Permission Manager - Handle browser permissions
+        class PermissionManager {            static async checkAndRequest() {
+                console.log('Checking permissions...');
+                let needsAccess = false;
+                
+                // Check notification permission
+                if ('Notification' in window) {
+                    console.log('Notification permission status:', Notification.permission);
+                    if (Notification.permission === 'default') {
+                        needsAccess = true;
+                        console.log('Notification permission needed');
+                    } else if (Notification.permission === 'granted') {
+                        AppState.permissions.notifications = true;
+                        console.log('Notification permission already granted');
+                    } else {
+                        console.log('Notification permission denied');
+                    }
+                } else {
+                    console.log('Notifications not supported in this browser');
+                }
+                
+                // Check if audio context is available (doesn't require permission modal if already initialized)
+                if (!AppState.permissions.audio) {
+                    try {
+                        // Try to create audio context to see if it's available
+                        const testContext = new (window.AudioContext || window.webkitAudioContext)();
+                        if (testContext.state === 'running' || testContext.state === 'suspended') {
+                            // Audio context is available, we just need user interaction to resume it
+                            AppState.permissions.audio = true;
+                            console.log('Audio context available, no permission modal needed');
+                            testContext.close(); // Clean up test context
+                        } else {
+                            needsAccess = true;
+                            console.log('Audio permission needed');
+                        }
+                    } catch (error) {
+                        // Audio context not available, need permission
+                        needsAccess = true;
+                        console.log('Audio permission needed (context creation failed)');
+                    }
+                }
+                
+                console.log('Needs access:', needsAccess);
+                
+                // Show access modal if needed
+                if (needsAccess) {
+                    DisplayManager.showAccessModal();
+                    return false;
+                } else {
+                    console.log('All permissions already available');
+                    // Try to initialize audio silently if not already done
+                    if (!AppState.media.ready) {
+                        try {
+                            await AudioEngine.initialize();
+                        } catch (error) {
+                            console.log('Audio initialization requires user interaction');
+                        }
+                    }
+                }
+                
+                return true;
+            }
+
+            static async requestAccess() {
+                try {
+                    console.log('Requesting permissions...');
+                    
+                    // Request notification permission first
+                    if ('Notification' in window && Notification.permission === 'default') {
+                        console.log('Requesting notification permission...');
+                        const permission = await Notification.requestPermission();
+                        AppState.permissions.notifications = permission === 'granted';
+                        console.log('Notification permission result:', permission);
+                    }
+                    
+                    // Initialize audio (requires user interaction)
+                    console.log('Initializing audio...');
+                    await AudioEngine.initialize();
+                    
+                    DisplayManager.hideAccessModal();
+                    
+                    if (AppState.permissions.audio && AppState.permissions.notifications) {
+                        DisplayManager.showFeedback('✅ All permissions granted! Timer will work perfectly in background.', 'success');
+                    } else if (AppState.permissions.audio) {
+                        DisplayManager.showFeedback('✅ Audio enabled! Notifications may be limited.', 'success');
+                    } else {
+                        DisplayManager.showFeedback('⚠️ Some permissions denied. Timer functionality may be limited.', 'warning');
+                    }
+                    
+                    return true;
+                } catch (error) {
+                    console.error('Permission request failed:', error);
+                    DisplayManager.showFeedback('⚠️ Could not enable all permissions. Timer will still work with limited functionality.', 'warning');
+                    DisplayManager.hideAccessModal();
+                    return false;
+                }
+            }
+
+            static skipPermissions() {
+                console.log('Skipping permissions');
+                DisplayManager.hideAccessModal();
+                DisplayManager.showFeedback('ℹ️ Running without permissions. You can enable them later for better functionality.', 'info');
+            }
+        }// Focus session management - unique approach with state machines
+        class FocusSession {
+            constructor() {
+                this.state = AppState.focus;
+                this.STATES = {
+                    IDLE: 'idle',
+                    RUNNING: 'running', 
+                    PAUSED: 'paused',
+                    COMPLETED: 'completed'
+                };
+                this.currentState = this.STATES.IDLE;
+            }
+
+            configure(minutes) {
+                if (this.currentState !== this.STATES.IDLE) {
+                    this.terminate();
+                }
+                
+                this.state.sessionMinutes = minutes;
+                this.state.totalDuration = minutes * 60;
+                this.state.remaining = this.state.totalDuration;
+                this.updateClockDisplay();
+                DisplayManager.showFeedback(`Focus session set for ${minutes} minutes`, 'info');
+            }            initiate() {
+                if (this.currentState === this.STATES.RUNNING) return;
+                
+                if (this.currentState === this.STATES.IDLE) {
+                    this.state.sessionStart = Date.now();
+                    this.state.sessionEnd = this.state.sessionStart + (this.state.totalDuration * 1000);
+                }
+                
+                this.currentState = this.STATES.RUNNING;
+                this.state.active = true;
+                this.state.paused = false;
+                
+                // Start local ticker as fallback
+                this.state.ticker = setInterval(() => {
+                    this.progressTick();
+                }, 1000);
+                
+                // Start service worker timer for background operation
+                if (AppState.worker.registered) {
+                    ServiceWorkerManager.startTimer(this.state.totalDuration * 1000, 'focus');
+                }
+                
+                this.updateControls();
+                DisplayManager.showFeedback('Focus session started', 'success');
+            }            halt() {
+                if (this.currentState !== this.STATES.RUNNING) return;
+                
+                this.currentState = this.STATES.PAUSED;
+                this.state.paused = true;
+                
+                if (this.state.ticker) {
+                    clearInterval(this.state.ticker);
+                    this.state.ticker = null;
+                }
+                
+                // Pause service worker timer
+                if (AppState.worker.registered) {
+                    ServiceWorkerManager.pauseTimer();
+                }
+                
+                this.updateControls();
+                DisplayManager.showFeedback('Focus session paused', 'warning');
+            }
+
+            resume() {
+                if (this.currentState !== this.STATES.PAUSED) return;
+                
+                this.currentState = this.STATES.RUNNING;
+                this.state.active = true;
+                this.state.paused = false;
+                
+                // Restart local ticker
+                this.state.ticker = setInterval(() => {
+                    this.progressTick();
+                }, 1000);
+                
+                // Resume service worker timer
+                if (AppState.worker.registered) {
+                    ServiceWorkerManager.resumeTimer();
+                }
+                
+                this.updateControls();
+                DisplayManager.showFeedback('Focus session resumed', 'success');
+            }
+
+            terminate() {
+                this.currentState = this.STATES.IDLE;
+                this.state.active = false;
+                this.state.paused = false;
+                this.state.remaining = this.state.totalDuration;
+                
+                if (this.state.ticker) {
+                    clearInterval(this.state.ticker);
+                    this.state.ticker = null;
+                }
+                
+                // Stop service worker timer
+                if (AppState.worker.registered) {
+                    ServiceWorkerManager.stopTimer();
+                }
+                
+                this.updateClockDisplay();
+                this.updateControls();
+                DisplayManager.showFeedback('Focus session reset', 'info');
+            }
+
+            progressTick() {
+                if (this.state.remaining <= 0) {
+                    this.onCompletion();
+                    return;
+                }
+                
+                this.state.remaining--;
+                this.updateClockDisplay();
+            }
+
+            onCompletion() {
+                this.currentState = this.STATES.COMPLETED;
+                this.state.active = false;
+                
+                if (this.state.ticker) {
+                    clearInterval(this.state.ticker);
+                    this.state.ticker = null;
+                }
+                
+                NotificationEngine.broadcast('Focus session completed!', 'Your focus time is up. Take a break!');
+                AudioEngine.playAlert();
+                this.updateControls();
+                DisplayManager.showFeedback('🎉 Focus session completed!', 'success');
+                
+                // Auto-reset after completion
+                setTimeout(() => this.terminate(), 2000);
+            }
+
+            updateClockDisplay() {
+                const minutes = Math.floor(this.state.remaining / 60);
+                const seconds = this.state.remaining % 60;
+                const formatted = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                UI.clockDisplay.textContent = formatted;
+                
+                // Update document title
+                if (this.currentState === this.STATES.RUNNING) {
+                    document.title = `${formatted} - Zen Focus`;
+                } else {
+                    document.title = 'Zen Focus';
+                }
+            }            updateControls() {
+                switch (this.currentState) {
+                    case this.STATES.IDLE:
+                        UI.primaryAction.textContent = 'Start Focus';
+                        UI.primaryAction.disabled = false;
+                        UI.resetAction.classList.add('hidden');
+                        UI.durationInput.disabled = false;
+                        break;
+                    case this.STATES.RUNNING:
+                        UI.primaryAction.textContent = 'Pause';
+                        UI.primaryAction.disabled = false;
+                        UI.resetAction.classList.remove('hidden');
+                        UI.durationInput.disabled = true;
+                        break;
+                    case this.STATES.PAUSED:
+                        UI.primaryAction.textContent = 'Resume';
+                        UI.primaryAction.disabled = false;
+                        UI.resetAction.classList.remove('hidden');
+                        UI.durationInput.disabled = true;
+                        break;
+                    case this.STATES.COMPLETED:                        UI.primaryAction.textContent = 'Start Focus';
+                        UI.primaryAction.disabled = false;
+                        UI.resetAction.classList.add('hidden');
+                        UI.durationInput.disabled = false;
+                        break;
+                }
+            }
+
+            // Service Worker integration methods
+            syncWithWorkerState(timer) {
+                console.log('Syncing with worker state:', timer);
+                
+                // Update local state to match worker state
+                if (timer.status === 'running') {
+                    this.currentState = this.STATES.RUNNING;
+                    this.state.active = true;
+                    this.state.paused = false;
+                } else if (timer.status === 'paused') {
+                    this.currentState = this.STATES.PAUSED;
+                    this.state.active = true;
+                    this.state.paused = true;
+                }
+                
+                // Update remaining time
+                const remainingSeconds = Math.max(0, Math.ceil(timer.remaining / 1000));
+                this.state.remaining = remainingSeconds;
+                
+                this.updateClockDisplay();
+                this.updateControls();
+            }
+
+            restoreFromWorkerState(timer) {
+                console.log('Restoring from worker state:', timer);
+                
+                // Calculate session duration from timer
+                const durationMinutes = Math.ceil(timer.duration / (1000 * 60));
+                this.configure(durationMinutes);
+                
+                // Sync current state
+                this.syncWithWorkerState(timer);
+                
+                // Resume local ticker if timer is running
+                if (timer.status === 'running' && !this.state.ticker) {
+                    this.state.ticker = setInterval(() => {
+                        this.progressTick();
+                    }, 1000);
+                }
+                
+                DisplayManager.showFeedback('Timer restored from background', 'info');
+            }
+
+            handleWorkerStopped() {
+                console.log('Service worker timer stopped');
+                
+                // Sync local state
+                this.currentState = this.STATES.IDLE;
+                this.state.active = false;
+                this.state.paused = false;
+                this.state.remaining = this.state.totalDuration;
+                
+                if (this.state.ticker) {
+                    clearInterval(this.state.ticker);
+                    this.state.ticker = null;
+                }
+                
+                this.updateClockDisplay();
+                this.updateControls();
+            }
+
+            startBreakSession() {
+                console.log('Starting break session');
+                
+                // Configure a 5-minute break timer
+                this.configure(5);
+                this.initiate();
+                
+                DisplayManager.showFeedback('Break timer started', 'info');
+            }
+        }
+
+        // Focus Session Instance
+        let focusSession;        // Event Handlers - Input and interaction management
+        class EventHandlers {            static setupListeners() {
+                // Duration input handling with comprehensive validation
+                UI.durationInput.addEventListener('input', this.onDurationChange);
+                UI.durationInput.addEventListener('keypress', this.onDurationKeypress);
+                UI.durationInput.addEventListener('blur', this.onDurationBlur);
+                UI.durationInput.addEventListener('paste', this.onDurationPaste);
+                
+                // Control button handlers
+                UI.primaryAction.addEventListener('click', this.onPrimaryAction);
+                UI.resetAction.addEventListener('click', this.onResetAction);
+                  // Permission modal handlers
+                const enableBtn = document.getElementById('enablePermissionsBtn');
+                const skipBtn = document.getElementById('skipPermissionsBtn');
+                
+                if (enableBtn) enableBtn.addEventListener('click', PermissionManager.requestAccess);
+                if (skipBtn) skipBtn.addEventListener('click', PermissionManager.skipPermissions);
+                
+                // Page lifecycle handlers
+                document.addEventListener('visibilitychange', this.onVisibilityChange);
+                window.addEventListener('beforeunload', this.onBeforeUnload);
+            }            static onDurationChange(event) {
+                let value = event.target.value;
+                
+                // Remove any non-digit characters
+                value = value.replace(/[^\d]/g, '');
+                
+                // Update the input field with sanitized value
+                if (event.target.value !== value) {
+                    event.target.value = value;
+                }
+                
+                // Convert to number and validate range
+                const numValue = parseInt(value);
+                
+                if (isNaN(numValue) || value === '') {
+                    // Invalid or empty input - show placeholder
+                    UI.clockDisplay.textContent = '25:00';
+                    DisplayManager.showFeedback('Please enter a valid number of minutes', 'warning');
+                    return;
+                }
+                
+                if (numValue < 1) {
+                    // Too small - set to minimum
+                    event.target.value = '1';
+                    focusSession.configure(1);
+                    DisplayManager.showFeedback('Minimum duration is 1 minute', 'warning');
+                    return;
+                }
+                
+                if (numValue > 999) {
+                    // Too large - set to maximum
+                    event.target.value = '999';
+                    focusSession.configure(999);
+                    DisplayManager.showFeedback('Maximum duration is 999 minutes', 'warning');
+                    return;
+                }
+                
+                // Valid range - configure timer
+                if (focusSession.currentState === focusSession.STATES.IDLE) {
+                    focusSession.configure(numValue);
+                }
+            }            static onDurationKeypress(event) {
+                // Allow: backspace, delete, tab, escape, enter, arrow keys
+                const allowedKeys = ['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
+                
+                if (allowedKeys.includes(event.key)) {
+                    if (event.key === 'Enter') {
+                        event.target.blur();
+                        if (focusSession.currentState === focusSession.STATES.IDLE) {
+                            focusSession.initiate();
+                        }
+                    }
+                    return;
+                }
+                
+                // Block non-digit characters
+                if (!/\d/.test(event.key)) {
+                    event.preventDefault();
+                    return;
+                }
+                
+                // Check if adding this digit would exceed the length limit (999 = 3 digits max)
+                const currentValue = event.target.value;
+                const newValue = currentValue + event.key;
+                
+                if (newValue.length > 3) {
+                    event.preventDefault();                    DisplayManager.showFeedback('Maximum 3 digits allowed (999 minutes max)', 'warning');
+                    return;
+                }
+                
+                // Check if the resulting number would be too large
+                const numValue = parseInt(newValue);
+                if (numValue > 999) {
+                    event.preventDefault();
+                    DisplayManager.showFeedback('Maximum duration is 999 minutes', 'warning');
+                    return;
+                }
+            }
+
+            static onDurationBlur(event) {
+                // Validate when user leaves the input field
+                let value = event.target.value.trim();
+                
+                if (value === '' || value === '0') {
+                    // Reset to default if empty or zero
+                    event.target.value = '25';
+                    if (focusSession.currentState === focusSession.STATES.IDLE) {
+                        focusSession.configure(25);
+                    }
+                    DisplayManager.showFeedback('Reset to default: 25 minutes', 'info');
+                    return;
+                }
+                
+                const numValue = parseInt(value);
+                if (isNaN(numValue) || numValue < 1 || numValue > 999) {
+                    // Invalid value - reset to default
+                    event.target.value = '25';
+                    if (focusSession.currentState === focusSession.STATES.IDLE) {
+                        focusSession.configure(25);
+                    }
+                    DisplayManager.showFeedback('Invalid duration. Reset to 25 minutes', 'warning');
+                }
+            }
+
+            static onDurationPaste(event) {
+                // Handle paste events to prevent invalid content
+                event.preventDefault();
+                
+                // Get pasted text
+                const paste = (event.clipboardData || window.clipboardData).getData('text');
+                
+                // Remove non-digits
+                const sanitized = paste.replace(/[^\d]/g, '');
+                
+                if (sanitized === '') {
+                    DisplayManager.showFeedback('Paste contains no valid numbers', 'warning');
+                    return;
+                }
+                
+                // Check length and value
+                if (sanitized.length > 3) {
+                    DisplayManager.showFeedback('Pasted value too long (max 3 digits)', 'warning');
+                    return;
+                }
+                
+                const numValue = parseInt(sanitized);
+                if (numValue < 1 || numValue > 999) {
+                    DisplayManager.showFeedback('Pasted value out of range (1-999)', 'warning');
+                    return;
+                }
+                
+                // Valid paste - update input
+                event.target.value = sanitized;
+                if (focusSession.currentState === focusSession.STATES.IDLE) {
+                    focusSession.configure(numValue);
+                }
+            }
+
+            static onPrimaryAction() {
+                switch (focusSession.currentState) {
+                    case focusSession.STATES.IDLE:
+                    case focusSession.STATES.COMPLETED:
+                        focusSession.initiate();
+                        break;
+                    case focusSession.STATES.RUNNING:
+                        focusSession.halt();
+                        break;
+                    case focusSession.STATES.PAUSED:
+                        focusSession.resume();
+                        break;
+                }
+            }
+
+            static onResetAction() {
+                focusSession.terminate();
+            }            static onVisibilityChange() {
+                // Service worker automatically handles background operations
+                // when the page becomes hidden. No additional action needed here.
+                if (document.hidden) {
+                    console.log('Page hidden - timer continues in background');
+                } else {
+                    console.log('Page visible - syncing with service worker');
+                    // Request current timer state when page becomes visible
+                    if (AppState.worker.registered) {
+                        ServiceWorkerManager.getTimerState();
+                    }
+                }
+            }
+
+            static onBeforeUnload(event) {
+                if (focusSession.currentState === focusSession.STATES.RUNNING) {
+                    event.preventDefault();
+                    event.returnValue = 'You have an active focus session. Are you sure you want to leave?';
+                    return event.returnValue;
+                }
+            }
+        }        // Application Bootstrap
+        class ZenFocusApp {
+            static async initialize() {
+                console.log('🧘 Initializing Zen Focus...');
+                
+                try {
+                    // Create focus session instance
+                    focusSession = new FocusSession();
+                    
+                    // Set up UI defaults
+                    UI.durationInput.value = AppState.focus.sessionMinutes;
+                    focusSession.updateClockDisplay();
+                    focusSession.updateControls();
+                    
+                    // Set up event listeners
+                    EventHandlers.setupListeners();
+                    
+                    // Register service worker for background operation
+                    await ServiceWorkerManager.register();
+                    
+                    // Check permissions and show modal if needed
+                    console.log('Checking permissions on startup...');
+                    const hasPermissions = await PermissionManager.checkAndRequest();
+                    
+                    // For debugging - force show modal if not already shown
+                    if (hasPermissions) {
+                        console.log('All permissions available, but showing modal for testing');
+                        // DisplayManager.showAccessModal(); // Uncomment this line to force show modal
+                    }
+                    
+                    console.log('✅ Zen Focus initialized successfully');
+                } catch (error) {
+                    console.error('❌ Initialization failed:', error);
+                    DisplayManager.showFeedback('App initialization failed', 'error');
+                }
+            }
+        }// Start the application when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', ZenFocusApp.initialize);
+        } else {
+            ZenFocusApp.initialize();
+        }
+    </script>
+</body>
+</html>
