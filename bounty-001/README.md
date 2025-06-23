@@ -3,10 +3,10 @@
 A modern, minimalist Pomodoro/focus timer web application with advanced background operation capabilities and seamless notifications.
 
 ## ✨ Features
- Approaches:
- - start a timer and countdown in the page while triggering a service worker to run in the background and send a notification when the timer is done
-- while for a simple 30 seconds timer, the service worker is overkill and the tab will still be available in the background, i went with the service worker approach to allow for easier migration if push notifications are deemed desirable in the future
-- browsers are known to kill background tabs and service workers too but the service worker will be able to run in the background for longer
+Approaches:  
+- start a timer and countdown in the page while triggering a service worker to run in the background and send a notification when the timer is done  
+- while for a simple 30 seconds timer, the service worker is overkill and the tab will still be available in the background, i went with the service worker approach to allow for easier migration if push notifications are deemed desirable in the future  
+- browsers are known to kill background tabs and service workers too, but the service worker will be able to run in the background for longer 
 
 ## 📱 How to Use
 
