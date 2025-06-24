@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pomodoro Timer</title>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Press Start 2P', monospace;
+      background: #000;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .container {
+      background: #1c2526;
+      border: 6px solid #00ff88;
+      border-radius: 20px;
+      padding: 40px;
+      text-align: center;
+      box-shadow: 0 0 30px rgba(0, 255, 136, 0.6), inset 0 0 15px rgba(0, 255, 136, 0.3);
+      max-width: 1200px;
+      width: calc(100vw - 40px);
+      height: calc(100vh - 40px);
+      max-height: 800px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      position: relative;
+    }
+
+    .container::before {
+      content: '';
+      position: absolute;
+      top: -12px;
+      left: -12px;
+      right: -12px;
+      bottom: -12px;
+      border: 3px dashed #ff007f;
+      border-radius: 24px;
+      z-index: -1;
+    }
+
+    .timer-input {
+      margin-bottom: 30px;
+    }
+
+    .label {
+      display: block;
+      margin-bottom: 15px;
+      font-size: clamp(16px, 2vw, 20px);
+      color: #00ff88;
+      text-transform: uppercase;
+      text-shadow: 0 0 8px rgba(0, 255, 136, 0.8);
+    }
+
+    .timer-input input {
+      background: #000;
+      border: 3px solid #ff007f;
+      border-radius: 8px;
+      padding: 15px 30px;
+      font-size: clamp(18px, 2vw, 22px);
+      color: #00ff88;
+      text-align: center;
+      width: 120px;
+      font-family: inherit;
+      box-shadow: 0 0 12px rgba(255, 0, 127, 0);
+      transition: all 0.3s ease;
+    }
+
+    .timer-input input:focus {
+      outline: none;
+      border-color: #00ff88;
+      box-shadow: 0 0 20px rgba(0, 0, 255, 0.8);
+    }
+
+    .timer-input input.invalid {
+      border-color: #ff5555;
+      box-shadow: 0 0 12px rgba(255, 85, 85, 0.8);
+    }
+
+    .timer-display {
+      font-size: clamp(48px, 8vw, 72px);
+      color: #00ff88;
+      margin: 30px 0;
+      text-shadow: 0 0 15px rgba(0, 255, 136, 0.8);
+      letter-spacing: 4px;
+    }
+
+    .timer-display.completed {
+      color: #ff007f;
+      text-shadow: 0 0 20px rgba(255, 0, 127, 0.8);
+    }
+
+    .controls {
+      margin-bottom: 20px;
+    }
+
+    .btn {
+      background: #ff007f;
+      border: 3px solid #00ff88;
+      color: #000;
+      padding: 15px 40px;
+      border-radius: 8px;
+      font-size: clamp(16px, 2vw, 18px);
+      font-weight: bold;
+      cursor: pointer;
+      text-transform: uppercase;
+      font-family: inherit;
+      box-shadow: 0 0 12px rgba(255, 0, 127, 0.5);
+      transition: all 0.3s ease;
+    }
+
+    .btn:hover {
+      background: #00ff88;
+      color: #000;
+      box-shadow: 0 0 20px rgba(0, 255, 136, 0.8);
+    }
+
+    .btn:disabled {
+      background: #555;
+      border-color: #333;
+      color: #777;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .status {
+      margin-top: 20px;
+      font-size: clamp(12px, 1.5vw, 14px);
+      color: #00ff88;
+      text-shadow: 0 0 8px rgba(0, 255, 136, 0.5);
+      min-height: 20px;
+    }
+
+    .status.error { color: #ff5555; text-shadow: 0 0 8px rgba(255, 85, 85, 0.5); }
+    .status.success { color: #00ff88; }
+    .status.warning { color: #ffaa00; text-shadow: 0 0 8px rgba(255, 170, 0, 0.5); }
+
+    .permission-notice {
+      background: rgba(0, 0, 0, 0.8);
+      border: 3px solid #ffaa00;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+      color: #ffaa00;
+      line-height: 1.5;
+      font-size: clamp(12px, 1.5vw, 14px);
+      text-shadow: 0 0 8px rgba(255, 170, 0, 0.5);
+    }
+
+    .permission-notice a {
+      color: #00ff88;
+      text-decoration: none;
+      text-shadow: 0 0 8px rgba(0, 255, 136, 0.5);
+    }
+
+    .permission-notice a:hover {
+      text-decoration: underline;
+    }
+
+    .permission-notice button {
+      background: #ffaa00;
+      border: 3px solid #00ff88;
+      color: #000;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 10px;
+      font-size: clamp(12px, 1.5vw, 14px);
+      font-family: inherit;
+      box-shadow: 0 0 12px rgba(255, 170, 0, 0.5);
+    }
+
+    .permission-notice button:hover {
+      background: #00ff88;
+      color: #000;
+      box-shadow: 0 0 20px rgba(0, 255, 136, 0.8);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    :focus {
+      outline: 3px solid #ff007f;
+      outline-offset: 3px;
+      box-shadow: 0 0 12px rgba(255, 0, 127, 0.8);
+    }
+
+    @font-face {
+      font-family: 'Press Start 2P';
+      src: url('data:font/truetype;base64,==') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div id="permissionNotice" class="permission-notice hidden">
+      <div>🔴 AUDIO OFFLINE! ENABLE SOUND OR <a href="https://support.google.com/chrome/answer/114662" target="_blank">CHECK CHROME SETTINGS</a>.</div>
+      <button onclick="enableAudio()">ACTIVATE AUDIO</button>
+    </div>
+
+    <div class="timer-input">
+      <label for="minutesInput">SET TIME (MIN):</label>
+      <input type="number" id="minutesInput" min="1" max="999" value="1" placeholder="1" />
+    </div>
+
+    <div id="timerDisplay" class="timer-display" role="timer">01:00</div>
+
+    <div class="controls">
+      <button id="startPauseBtn" class="btn" onclick="toggleTimer()">START</button>
+    </div>
+
+    <div id="status" class="status"></div>
+  </div>
+
+  <script>
+    class PomodoroTimer {
+      constructor() {
+        this.totalSeconds = 0;
+        this.remainingSeconds = 0;
+        this.isRunning = false;
+        this.intervalId = null;
+        this.audioContext = null;
+        this.audioEnabled = false;
+        this.notificationSound = null;
+        this.lastTickTime = 0;
+
+        this._getElements();
+        this._setupAudio();
+        this._bindEvents();
+        this._refreshFromInput();
+      }
+
+      _getElements() {
+        this.minutesInput = document.getElementById('minutesInput');
+        this.timerDisplay = document.getElementById('timerDisplay');
+        this.startPauseBtn = document.getElementById('startPauseBtn');
+        this.status = document.getElementById('status');
+        this.permissionNotice = document.getElementById('permissionNotice');
+      }
+
+      async _setupAudio() {
+        try {
+          this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          this._makeBeep();
+          await this._checkAudio();
+        } catch (err) {
+          this._showStatus('AUDIO NOT SUPPORTED', 'warning');
+          this._showPermissionNotice();
+        }
+      }
+
+      _makeBeep() {
+        this.notificationSound = () => {
+          if (!this.audioContext || !this.audioEnabled) return;
+
+          const osc = this.audioContext.createOscillator();
+          const gain = this.audioContext.createGain();
+
+          osc.connect(gain);
+          gain.connect(this.audioContext.destination);
+
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(880, this.audioContext.currentTime);
+          gain.gain.setValueAtTime(0.2, this.audioContext.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.4);
+
+          osc.start();
+          osc.stop(this.audioContext.currentTime + 0.5);
+        };
+      }
+
+      async _checkAudio() {
+        if (this.audioContext.state === 'suspended') {
+          this.audioEnabled = false;
+          this._showPermissionNotice();
+        } else {
+          this.audioEnabled = true;
+          this._hidePermissionNotice();
+        }
+      }
+
+      _showPermissionNotice() {
+        this.permissionNotice.classList.remove('hidden');
+      }
+
+      _hidePermissionNotice() {
+        this.permissionNotice.classList.add('hidden');
+      }
+
+      async enableAudio() {
+        try {
+          if (this.audioContext.state === 'suspended') await this.audioContext.resume();
+          this.notificationSound();
+          this.audioEnabled = true;
+          this._hidePermissionNotice();
+          this._showStatus('AUDIO ACTIVATED!', 'success');
+        } catch (e) {
+          this._showStatus('AUDIO FAILED. CHECK CHROME.', 'error');
+          this._showPermissionNotice();
+        }
+      }
+
+      _bindEvents() {
+        this.minutesInput.addEventListener('input', () => {
+          this._validateInput();
+          if (!this.isRunning) this._refreshFromInput();
+        });
+
+        this.minutesInput.addEventListener('keydown', e => {
+          if (e.key === 'Enter') this.toggleTimer();
+        });
+
+        this.startPauseBtn.addEventListener('keydown', e => {
+          if (e.key === ' ') {
+            e.preventDefault();
+            this.toggleTimer();
+          }
+        });
+      }
+
+      _validateInput() {
+        const val = parseInt(this.minutesInput.value);
+        if (isNaN(val) || val < 1 || val > 999) {
+          this.minutesInput.classList.add('invalid');
+          this._showStatus('USE 1-999 ONLY!', 'error');
+          return false;
+        }
+        this.minutesInput.classList.remove('invalid');
+        this._showStatus('');
+        return true;
+      }
+
+      _refreshFromInput() {
+        if (!this._validateInput()) return;
+        const mins = parseInt(this.minutesInput.value);
+        this.totalSeconds = mins * 60;
+        this.remainingSeconds = this.totalSeconds;
+        this._updateDisplay();
+      }
+
+      toggleTimer() {
+        if (!this._validateInput()) return;
+        this.isRunning ? this._pause() : this._start();
+      }
+
+      async _start() {
+        if (this.remainingSeconds <= 0) this._refreshFromInput();
+        if (this.audioContext.state === 'suspended') await this.audioContext.resume();
+
+        this.isRunning = true;
+        this.minutesInput.disabled = true;
+        this.startPauseBtn.textContent = 'PAUSE';
+        this.timerDisplay.classList.remove('completed');
+
+        this.lastTickTime = performance.now();
+        this.intervalId = setInterval(() => this._tick(), 100);
+
+        this._showStatus('TIMER ON!', 'success');
+      }
+
+      _pause() {
+        this.isRunning = false;
+        this.startPauseBtn.textContent = 'START';
+        this.minutesInput.disabled = false;
+        clearInterval(this.intervalId);
+        this.intervalId = null;
+        this._showStatus('TIMER PAUSED');
+      }
+
+      _tick() {
+        const now = performance.now();
+        const diff = (now - this.lastTickTime) / 1000;
+        this.remainingSeconds = Math.max(0, this.remainingSeconds - diff);
+        this.lastTickTime = now;
+
+        this._updateDisplay();
+        if (this.remainingSeconds <= 0) this._complete();
+      }
+
+      async _complete() {
+        this._pause();
+        this.timerDisplay.classList.add('completed');
+        await this._playSound();
+        this._showStatus('DONE!', 'success');
+
+        setTimeout(() => {
+          this.remainingSeconds = this.totalSeconds;
+          this._updateDisplay();
+          this.timerDisplay.classList.remove('completed');
+        }, 3000);
+      }
+
+      async _playSound() {
+        if (this.audioContext.state === 'suspended') await this.audioContext.resume();
+        if (this.audioEnabled && this.notificationSound) this.notificationSound();
+      }
+
+      _updateDisplay() {
+        const mins = Math.floor(this.remainingSeconds / 60);
+        const secs = Math.round(this.remainingSeconds % 60);
+        this.timerDisplay.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        document.title = this.isRunning ? `${this.timerDisplay.textContent} - Pomodoro Timer` : 'Pomodoro Timer';
+      }
+
+      _showStatus(msg, type = '') {
+        this.status.textContent = msg;
+        this.status.className = 'status';
+        if (type) this.status.classList.add(type);
+
+        if (msg && type !== 'error') {
+          setTimeout(() => {
+            this.status.textContent = '';
+            this.status.className = 'status';
+          }, 3000);
+        }
+      }
+    }
+
+    let timer;
+
+    function toggleTimer() {
+      timer.toggleTimer();
+    }
+
+    function enableAudio() {
+      timer.enableAudio();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      timer = new PomodoroTimer();
+    });
+
+    window.addEventListener('beforeunload', () => {
+      if (timer?.isRunning) return 'Timer is running.';
+    });
+  </script>
+</body>
+</html>
