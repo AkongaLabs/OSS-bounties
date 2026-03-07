@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pomodoro Timer</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --text: #1a2433;
+      --muted: #5a667a;
+      --ok: #1f9d63;
+      --warn: #c84a4a;
+      --idle: #2b6cb0;
+      --paused: #a87500;
+      --done: #a31d3c;
+      --ring: rgba(43, 108, 176, 0.2);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text);
+      background: radial-gradient(1200px 600px at 10% 0%, #dfe9f3 0%, transparent 50%), radial-gradient(1200px 600px at 90% 100%, #e9eef5 0%, transparent 50%), var(--bg);
+      display: grid;
+      place-items: center;
+      padding: 16px;
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--card);
+      border: 2px solid #d9e1ec;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 16px 32px rgba(16, 24, 40, 0.08);
+      transition: border-color 160ms ease, box-shadow 160ms ease;
+    }
+    .card.running { border-color: var(--ok); box-shadow: 0 0 0 8px rgba(31, 157, 99, 0.1); }
+    .card.paused { border-color: var(--paused); box-shadow: 0 0 0 8px rgba(168, 117, 0, 0.1); }
+    .card.done { border-color: var(--done); box-shadow: 0 0 0 8px rgba(163, 29, 60, 0.14); }
+    h1 { margin: 0 0 14px; font-size: 1.3rem; letter-spacing: 0.2px; }
+    .row { display: grid; gap: 8px; margin-bottom: 12px; }
+    label { font-size: 0.95rem; color: var(--muted); }
+    input[type="number"] {
+      width: 100%;
+      font-size: 1.1rem;
+      padding: 10px 12px;
+      border: 2px solid #c8d4e4;
+      border-radius: 10px;
+      color: var(--text);
+      background: #fff;
+      outline: none;
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+    input[type="number"]:focus { border-color: var(--idle); box-shadow: 0 0 0 4px var(--ring); }
+    input[aria-invalid="true"] { border-color: var(--warn); box-shadow: 0 0 0 4px rgba(200, 74, 74, 0.14); }
+    .timer {
+      margin: 12px 0 6px;
+      font-variant-numeric: tabular-nums;
+      font-size: clamp(2rem, 8vw, 3.2rem);
+      line-height: 1;
+      letter-spacing: 1px;
+      font-weight: 700;
+    }
+    .status { min-height: 1.3rem; color: var(--muted); font-size: 0.95rem; margin-bottom: 10px; }
+    .sound-status { min-height: 1.2rem; font-size: 0.86rem; color: var(--muted); margin-bottom: 10px; }
+    .sound-status.blocked { color: var(--warn); font-weight: 600; }
+    .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: #fff;
+      background: var(--idle);
+      transition: transform 80ms ease, opacity 120ms ease, filter 120ms ease;
+    }
+    button:hover { filter: brightness(1.03); }
+    button:active { transform: translateY(1px); }
+    button:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
+    button.pause { background: #b78106; }
+    button.reset { background: #5b667a; }
+    button:disabled { cursor: not-allowed; opacity: 0.55; filter: none; }
+    .error { min-height: 1.2rem; color: var(--warn); font-size: 0.92rem; }
+    .pulse { animation: pulse 1s ease-in-out 2; }
+    @keyframes pulse { 0% { transform: scale(1); } 30% { transform: scale(1.03); } 100% { transform: scale(1); } }
+  </style>
+</head>
+<body>
+  <main class="card idle" id="app">
+    <h1>Pomodoro Timer</h1>
+    <div class="row">
+      <label for="minutesInput">Timer length (minutes, 1 to 999)</label>
+      <input id="minutesInput" type="number" min="1" max="999" step="1" inputmode="numeric" autocomplete="off" value="25" aria-label="Pomodoro duration in minutes" aria-describedby="errorMsg" />
+    </div>
+    <div id="timerDisplay" class="timer" role="timer" aria-live="polite" aria-atomic="true" aria-label="Time remaining" tabindex="0">25:00</div>
+    <div id="statusText" class="status" aria-live="polite">Ready</div>
+    <div id="soundStatus" class="sound-status" aria-live="polite">Sound: idle (click Start to enable)</div>
+    <div id="errorMsg" class="error" role="alert" aria-live="assertive"></div>
+    <div class="controls">
+      <button id="startBtn" aria-label="Start or resume timer">Start</button>
+      <button id="pauseBtn" class="pause" aria-label="Pause timer" disabled>Pause</button>
+      <button id="resetBtn" class="reset" aria-label="Reset timer">Reset</button>
+    </div>
+  </main>
+  <script>
+    (function () {
+      "use strict";
+      const app = document.getElementById("app");
+      const minutesInput = document.getElementById("minutesInput");
+      const timerDisplay = document.getElementById("timerDisplay");
+      const statusText = document.getElementById("statusText");
+      const soundStatus = document.getElementById("soundStatus");
+      const errorMsg = document.getElementById("errorMsg");
+      const startBtn = document.getElementById("startBtn");
+      const pauseBtn = document.getElementById("pauseBtn");
+      const resetBtn = document.getElementById("resetBtn");
+      let totalSeconds = 25 * 60;
+      let remainingSeconds = totalSeconds;
+      let running = false;
+      let completed = false;
+      let endTimestampMs = null;
+      let tickerId = null;
+      let audioCtx = null;
+      let audioReady = false;
+      let soundBlocked = false;
+      let scheduledToneNodes = [];
+      let scheduledAlarmAt = null;
+      let restoreDisplayTimeoutId = null;
+      const ALARM_DURATION_SECONDS = 0.9;
+      function pad2(n) { return String(n).padStart(2, "0"); }
+      function formatMMSS(seconds) { const mm = Math.floor(seconds / 60); const ss = seconds % 60; return pad2(mm) + ":" + pad2(ss); }
+      function renderTime() { timerDisplay.textContent = formatMMSS(remainingSeconds); }
+      function setStatus(text, mode) { statusText.textContent = text; app.classList.remove("running", "paused", "done"); if (mode) app.classList.add(mode); }
+      function setError(message) { errorMsg.textContent = message || ""; minutesInput.setAttribute("aria-invalid", message ? "true" : "false"); }
+      function soundBlockedMessage() {
+        return "Sound is blocked. In Chrome: Site settings -> Sound -> Allow, then press Start again.";
+      }
+      function setSoundBlocked(blocked) {
+        soundBlocked = blocked;
+        soundStatus.classList.toggle("blocked", blocked);
+        if (blocked) {
+          soundStatus.textContent = "Sound blocked: enable it in Chrome (Site settings -> Sound -> Allow).";
+        } else if (audioReady) {
+          soundStatus.textContent = "Sound: ready";
+        } else {
+          soundStatus.textContent = "Sound: idle (click Start to enable)";
+        }
+      }
+      function setControls() { startBtn.disabled = running; pauseBtn.disabled = !running; minutesInput.disabled = running; }
+      function validateMinutes() {
+        const raw = minutesInput.value.trim();
+        if (raw === "") return { ok: false, message: "Please enter a value from 1 to 999 minutes." };
+        const value = Number(raw);
+        if (!Number.isFinite(value) || !Number.isInteger(value)) return { ok: false, message: "Minutes must be a whole number." };
+        if (value < 1 || value > 999) return { ok: false, message: "Minutes must be between 1 and 999." };
+        return { ok: true, minutes: value };
+      }
+      async function ensureAudioReady() {
+        try {
+          if (!audioCtx) {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) throw new Error("Web Audio API is not supported in this browser.");
+            audioCtx = new Ctx({ latencyHint: "interactive" });
+          }
+          if (audioCtx.state !== "running") await audioCtx.resume();
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          gain.gain.value = 0;
+          osc.connect(gain).connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.03);
+          audioReady = true;
+          setSoundBlocked(false);
+          return true;
+        } catch (err) {
+          audioReady = false;
+          setSoundBlocked(true);
+          setError(soundBlockedMessage());
+          return false;
+        }
+      }
+      function clearScheduledAlarm() {
+        if (restoreDisplayTimeoutId !== null) {
+          clearTimeout(restoreDisplayTimeoutId);
+          restoreDisplayTimeoutId = null;
+        }
+        scheduledAlarmAt = null;
+        cleanupScheduledToneNodes();
+      }
+      function cleanupScheduledToneNodes() {
+        if (scheduledToneNodes.length === 0) return;
+        scheduledToneNodes.forEach((node) => {
+          try { node.stop(0); } catch (err) {}
+          try { node.disconnect(); } catch (err) {}
+        });
+        scheduledToneNodes = [];
+      }
+      async function scheduleNotificationAtCountdownEnd() {
+        if (!audioCtx || !audioReady) return false;
+        try {
+          if (audioCtx.state !== "running") await audioCtx.resume();
+          clearScheduledAlarm();
+          const alarmAt = audioCtx.currentTime + Math.max(0, remainingSeconds);
+          const tones = [880, 660, 880, 990];
+          tones.forEach((freq, idx) => {
+            const start = alarmAt + 0.01 + idx * 0.22;
+            const end = start + 0.15;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(freq, start);
+            gain.gain.setValueAtTime(0.0001, start);
+            gain.gain.exponentialRampToValueAtTime(0.2, start + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, end);
+            osc.connect(gain).connect(audioCtx.destination);
+            osc.start(start);
+            osc.stop(end + 0.01);
+            scheduledToneNodes.push(osc);
+            scheduledToneNodes.push(gain);
+          });
+          scheduledAlarmAt = alarmAt;
+          setSoundBlocked(false);
+          return true;
+        } catch (err) {
+          setSoundBlocked(true);
+          setError(soundBlockedMessage());
+          return false;
+        }
+      }
+      function recalcRemaining() {
+        if (!running || endTimestampMs === null) return;
+        const msLeft = endTimestampMs - Date.now();
+        const secLeft = Math.max(0, Math.ceil(msLeft / 1000));
+        if (secLeft !== remainingSeconds) { remainingSeconds = secLeft; renderTime(); }
+        if (remainingSeconds <= 0) finishTimer();
+      }
+      function startTicker() { stopTicker(); tickerId = window.setInterval(recalcRemaining, 200); }
+      function stopTicker() { if (tickerId !== null) { clearInterval(tickerId); tickerId = null; } }
+      async function startTimer() {
+        setError("");
+        const valid = validateMinutes();
+        if (!valid.ok) { setError(valid.message); minutesInput.focus(); return; }
+        if (!running && (completed || remainingSeconds <= 0 || totalSeconds !== valid.minutes * 60)) {
+          totalSeconds = valid.minutes * 60;
+          remainingSeconds = totalSeconds;
+          completed = false;
+          renderTime();
+        }
+        await ensureAudioReady();
+        if (audioReady) await scheduleNotificationAtCountdownEnd();
+        running = true;
+        endTimestampMs = Date.now() + remainingSeconds * 1000;
+        setStatus("Running", "running");
+        setControls();
+        startTicker();
+      }
+      function pauseTimer() {
+        if (!running) return;
+        recalcRemaining();
+        running = false;
+        endTimestampMs = null;
+        stopTicker();
+        clearScheduledAlarm();
+        setStatus("Paused", "paused");
+        setControls();
+      }
+      function finishTimer() {
+        running = false;
+        completed = true;
+        remainingSeconds = 0;
+        endTimestampMs = null;
+        stopTicker();
+        renderTime();
+        setStatus("Time is up", "done");
+        setControls();
+        timerDisplay.classList.remove("pulse");
+        void timerDisplay.offsetWidth;
+        timerDisplay.classList.add("pulse");
+        const nowAudioTime = audioCtx ? audioCtx.currentTime : 0;
+        const alarmDoneAt = scheduledAlarmAt !== null ? (scheduledAlarmAt + ALARM_DURATION_SECONDS) : nowAudioTime;
+        const delayMs = Math.max(0, Math.round((alarmDoneAt - nowAudioTime) * 1000));
+        restoreDisplayTimeoutId = window.setTimeout(function () {
+          if (running) return;
+          cleanupScheduledToneNodes();
+          scheduledAlarmAt = null;
+          completed = false;
+          remainingSeconds = totalSeconds;
+          renderTime();
+          setStatus("Ready", null);
+          setControls();
+        }, delayMs);
+      }
+      function resetTimer() {
+        stopTicker();
+        running = false;
+        completed = false;
+        endTimestampMs = null;
+        clearScheduledAlarm();
+        const valid = validateMinutes();
+        if (valid.ok) {
+          setError("");
+          totalSeconds = valid.minutes * 60;
+        } else {
+          setError(valid.message);
+        }
+        remainingSeconds = totalSeconds;
+        renderTime();
+        setStatus("Ready", null);
+        setControls();
+      }
+      startBtn.addEventListener("click", startTimer);
+      pauseBtn.addEventListener("click", pauseTimer);
+      resetBtn.addEventListener("click", resetTimer);
+      minutesInput.addEventListener("blur", function () {
+        const valid = validateMinutes();
+        if (!valid.ok) { setError(valid.message); } else {
+          setError("");
+          if (!running) {
+            totalSeconds = valid.minutes * 60;
+            if (!completed) { remainingSeconds = totalSeconds; renderTime(); }
+          }
+        }
+      });
+      minutesInput.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); startTimer(); } });
+      document.addEventListener("visibilitychange", recalcRemaining);
+      document.addEventListener("keydown", function (e) {
+        const target = e.target;
+        const inInput = target === minutesInput;
+        if (e.code === "Space" && !inInput) { e.preventDefault(); if (running) pauseTimer(); else startTimer(); }
+        if ((e.key === "r" || e.key === "R") && !inInput) resetTimer();
+      });
+      renderTime();
+      setControls();
+      setStatus("Ready", null);
+      minutesInput.setAttribute("aria-invalid", "false");
+    })();
+  </script>
+</body>
+</html>
