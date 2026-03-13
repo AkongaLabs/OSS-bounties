@@ -1,0 +1,26 @@
+.pomodoro-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: Arial, sans-serif;
+}
+
+.time-display {
+  font-size: 3rem;
+  margin: 20px 0;
+}
+
+button {
+  padding: 10px 20px;
+  font-size: 1.2rem;
+  margin: 5px;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #f0f0f0;
+}
+
+button:active {
+  background-color: #e0e0e0;
+}
