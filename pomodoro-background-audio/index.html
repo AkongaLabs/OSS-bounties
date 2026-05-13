@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Background Audio Pomodoro Prototype</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f7f4;
+        --panel: #ffffff;
+        --text: #1d1d1f;
+        --muted: #62626a;
+        --line: #d9d8d2;
+        --accent: #1f6feb;
+        --accent-dark: #1757b8;
+        --danger: #b42318;
+        --success: #067647;
+        --shadow: 0 18px 55px rgba(16, 24, 40, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background:
+          radial-gradient(circle at top left, rgba(31, 111, 235, 0.12), transparent 28rem),
+          var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      }
+
+      main {
+        width: min(100%, 460px);
+        padding: 32px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: clamp(1.5rem, 6vw, 2.05rem);
+        line-height: 1.1;
+        letter-spacing: 0;
+      }
+
+      .intro {
+        margin: 0 0 26px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .timer-display {
+        display: block;
+        margin: 18px 0 22px;
+        font-variant-numeric: tabular-nums;
+        font-size: clamp(4rem, 22vw, 7rem);
+        font-weight: 760;
+        line-height: 0.95;
+        letter-spacing: 0;
+        text-align: center;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 0.95rem;
+        font-weight: 700;
+      }
+
+      input {
+        width: 100%;
+        min-height: 48px;
+        padding: 10px 13px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        color: var(--text);
+        font: inherit;
+        font-variant-numeric: tabular-nums;
+      }
+
+      input:focus,
+      button:focus-visible {
+        outline: 3px solid rgba(31, 111, 235, 0.25);
+        outline-offset: 2px;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      button {
+        min-height: 48px;
+        border: 0;
+        border-radius: 10px;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 760;
+      }
+
+      .primary {
+        background: var(--accent);
+        color: #fff;
+      }
+
+      .primary:hover {
+        background: var(--accent-dark);
+      }
+
+      .secondary {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--text);
+      }
+
+      .secondary:hover {
+        background: #f0f3f8;
+      }
+
+      .status {
+        min-height: 44px;
+        margin-top: 20px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: #f5f7fb;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .status[data-tone="error"] {
+        background: #fff1f0;
+        color: var(--danger);
+      }
+
+      .status[data-tone="success"] {
+        background: #ecfdf3;
+        color: var(--success);
+      }
+
+      .status[data-tone="running"] {
+        background: #eff6ff;
+        color: #1849a9;
+      }
+
+      @media (max-width: 520px) {
+        main {
+          padding: 24px;
+          border-radius: 14px;
+        }
+
+        .controls {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Pomodoro Timer</h1>
+      <p class="intro">A minimal countdown with a Chrome-friendly audio unlock for background chimes.</p>
+
+      <form id="timer-form" novalidate>
+        <label for="minutes">Minutes</label>
+        <input
+          id="minutes"
+          name="minutes"
+          type="text"
+          pattern="[0-9]*"
+          autocomplete="off"
+          inputmode="numeric"
+          value="25"
+          aria-describedby="status"
+        />
+
+        <output
+          id="display"
+          class="timer-display"
+          aria-live="polite"
+          aria-label="Remaining time"
+        >
+          25:00
+        </output>
+
+        <div class="controls">
+          <button id="start-pause" class="primary" type="submit" aria-label="Start timer">Start</button>
+          <button id="reset" class="secondary" type="button" aria-label="Reset timer">Reset</button>
+        </div>
+      </form>
+
+      <div id="status" class="status" role="status" aria-live="polite">
+        Press Start once to allow Chrome to unlock the notification sound.
+      </div>
+    </main>
+
+    <script>
+      (() => {
+        const form = document.querySelector("#timer-form");
+        const minutesInput = document.querySelector("#minutes");
+        const display = document.querySelector("#display");
+        const startPauseButton = document.querySelector("#start-pause");
+        const resetButton = document.querySelector("#reset");
+        const status = document.querySelector("#status");
+        const originalTitle = document.title;
+
+        const state = {
+          configuredSeconds: 25 * 60,
+          remainingSeconds: 25 * 60,
+          deadlineMs: 0,
+          timerId: 0,
+          running: false,
+          audioContext: null,
+          audioUnlocked: false,
+        };
+
+        const pad = (value) => String(value).padStart(2, "0");
+
+        const formatSeconds = (seconds) => {
+          const safeSeconds = Math.max(0, Math.ceil(seconds));
+          const minutes = Math.floor(safeSeconds / 60);
+          const remainder = safeSeconds % 60;
+          return `${pad(minutes)}:${pad(remainder)}`;
+        };
+
+        const setStatus = (message, tone = "") => {
+          status.textContent = message;
+          status.dataset.tone = tone;
+        };
+
+        const syncDisplay = () => {
+          const formatted = formatSeconds(state.remainingSeconds);
+          display.value = formatted;
+          display.textContent = formatted;
+          document.title = state.running ? `${formatted} - Pomodoro` : originalTitle;
+        };
+
+        const parseMinutes = () => {
+          const numericValue = Number(minutesInput.value);
+
+          if (!Number.isInteger(numericValue) || numericValue < 1 || numericValue > 999) {
+            throw new Error("Enter a whole number from 1 to 999 minutes.");
+          }
+
+          return numericValue;
+        };
+
+        const stopTicking = () => {
+          if (state.timerId) {
+            clearInterval(state.timerId);
+            state.timerId = 0;
+          }
+        };
+
+        const resetToConfiguredTime = () => {
+          stopTicking();
+          state.running = false;
+          state.remainingSeconds = state.configuredSeconds;
+          state.deadlineMs = 0;
+          startPauseButton.textContent = "Start";
+          startPauseButton.setAttribute("aria-label", "Start timer");
+          minutesInput.disabled = false;
+          syncDisplay();
+        };
+
+        const getAudioContext = () => {
+          const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContextCtor) {
+            throw new Error("This browser does not support Web Audio.");
+          }
+
+          if (!state.audioContext) {
+            state.audioContext = new AudioContextCtor();
+          }
+
+          return state.audioContext;
+        };
+
+        const unlockAudio = async () => {
+          const context = getAudioContext();
+          if (context.state === "suspended") {
+            await context.resume();
+          }
+
+          const oscillator = context.createOscillator();
+          const gain = context.createGain();
+          gain.gain.value = 0.0001;
+          oscillator.connect(gain);
+          gain.connect(context.destination);
+          oscillator.start();
+          oscillator.stop(context.currentTime + 0.04);
+          state.audioUnlocked = true;
+        };
+
+        const playChime = async () => {
+          const context = getAudioContext();
+          if (context.state === "suspended") {
+            await context.resume();
+          }
+
+          const now = context.currentTime;
+          const notes = [880, 1174.66, 1567.98];
+
+          notes.forEach((frequency, index) => {
+            const oscillator = context.createOscillator();
+            const gain = context.createGain();
+            const start = now + index * 0.18;
+            const stop = start + 0.16;
+
+            oscillator.type = "sine";
+            oscillator.frequency.value = frequency;
+            gain.gain.setValueAtTime(0.0001, start);
+            gain.gain.exponentialRampToValueAtTime(0.28, start + 0.018);
+            gain.gain.exponentialRampToValueAtTime(0.0001, stop);
+            oscillator.connect(gain);
+            gain.connect(context.destination);
+            oscillator.start(start);
+            oscillator.stop(stop + 0.02);
+          });
+        };
+
+        const completeTimer = async () => {
+          resetToConfiguredTime();
+          display.textContent = "00:00";
+          display.value = "00:00";
+          setStatus("Done. Chime played and timer reset to the configured time.", "success");
+
+          try {
+            await playChime();
+          } catch (error) {
+            setStatus(
+              "Timer completed, but Chrome blocked audio. Click Start once while this tab is active and confirm site sound is allowed.",
+              "error",
+            );
+          } finally {
+            window.setTimeout(syncDisplay, 900);
+          }
+        };
+
+        const tick = () => {
+          const remainingMs = state.deadlineMs - Date.now();
+          state.remainingSeconds = Math.max(0, remainingMs / 1000);
+          syncDisplay();
+
+          if (remainingMs <= 0) {
+            void completeTimer();
+          }
+        };
+
+        const startTimer = async () => {
+          try {
+            const configuredMinutes = parseMinutes();
+            state.configuredSeconds = configuredMinutes * 60;
+
+            await unlockAudio();
+
+            state.remainingSeconds = state.remainingSeconds > 0 ? state.remainingSeconds : state.configuredSeconds;
+            state.deadlineMs = Date.now() + state.remainingSeconds * 1000;
+            state.running = true;
+            minutesInput.disabled = true;
+            startPauseButton.textContent = "Pause";
+            startPauseButton.setAttribute("aria-label", "Pause timer");
+            setStatus(
+              state.audioUnlocked
+                ? "Running. You can switch tabs or minimize Chrome; the chime is unlocked for this session."
+                : "Running. Audio unlock status could not be confirmed.",
+              "running",
+            );
+
+            stopTicking();
+            state.timerId = window.setInterval(tick, 250);
+            tick();
+          } catch (error) {
+            resetToConfiguredTime();
+            setStatus(error.message || "Unable to start timer.", "error");
+          }
+        };
+
+        const pauseTimer = () => {
+          tick();
+          stopTicking();
+          state.running = false;
+          startPauseButton.textContent = "Start";
+          startPauseButton.setAttribute("aria-label", "Resume timer");
+          minutesInput.disabled = false;
+          setStatus("Paused. Press Start to resume from the displayed time.", "");
+          syncDisplay();
+        };
+
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          if (state.running) {
+            pauseTimer();
+          } else {
+            void startTimer();
+          }
+        });
+
+        resetButton.addEventListener("click", () => {
+          try {
+            state.configuredSeconds = parseMinutes() * 60;
+          } catch {
+            state.configuredSeconds = 25 * 60;
+            minutesInput.value = "25";
+          }
+
+          resetToConfiguredTime();
+          setStatus("Reset to the configured time.", "");
+        });
+
+        minutesInput.addEventListener("input", () => {
+          if (state.running) {
+            return;
+          }
+
+          try {
+            state.configuredSeconds = parseMinutes() * 60;
+            state.remainingSeconds = state.configuredSeconds;
+            setStatus("Ready. Press Start once to unlock audio and begin.", "");
+          } catch (error) {
+            setStatus(error.message, "error");
+          }
+
+          syncDisplay();
+        });
+
+        document.addEventListener("visibilitychange", () => {
+          if (state.running) {
+            tick();
+          }
+        });
+
+        syncDisplay();
+      })();
+    </script>
+  </body>
+</html>
