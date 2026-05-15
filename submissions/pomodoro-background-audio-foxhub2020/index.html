@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Background Audio Pomodoro</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        background: #f6f7f9;
+        color: #17191f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      main {
+        width: min(100%, 420px);
+        display: grid;
+        gap: 20px;
+      }
+
+      .timer-panel {
+        display: grid;
+        gap: 18px;
+        padding: 28px;
+        border: 1px solid #d7dce4;
+        border-radius: 8px;
+        background: #ffffff;
+        box-shadow: 0 12px 32px rgb(24 29 41 / 8%);
+      }
+
+      label {
+        display: grid;
+        gap: 8px;
+        font-size: 0.95rem;
+        font-weight: 650;
+      }
+
+      input {
+        width: 100%;
+        min-height: 44px;
+        border: 1px solid #aab3c0;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font: inherit;
+        background: #ffffff;
+        color: #17191f;
+      }
+
+      input:disabled {
+        color: #5a6270;
+        background: #eef1f5;
+      }
+
+      button {
+        min-height: 46px;
+        border: 0;
+        border-radius: 6px;
+        padding: 10px 16px;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+        background: #0f766e;
+        color: #ffffff;
+      }
+
+      button:focus-visible,
+      input:focus-visible {
+        outline: 3px solid #6ee7b7;
+        outline-offset: 2px;
+      }
+
+      .time {
+        min-height: 96px;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        border: 1px solid #d7dce4;
+        background: #f9fafb;
+        font-size: 4rem;
+        line-height: 1;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .status {
+        min-height: 46px;
+        margin: 0;
+        color: #485160;
+        line-height: 1.45;
+      }
+
+      .status[data-tone="error"] {
+        color: #b42318;
+      }
+
+      .status[data-tone="done"] {
+        color: #0f766e;
+        font-weight: 650;
+      }
+
+      .self-test {
+        display: none;
+        margin: 0;
+        padding: 12px;
+        border-radius: 6px;
+        background: #ecfdf5;
+        color: #064e3b;
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        white-space: pre-wrap;
+      }
+
+      .self-test.is-visible {
+        display: block;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          background: #101318;
+          color: #eef2f7;
+        }
+
+        .timer-panel {
+          border-color: #303744;
+          background: #171b22;
+          box-shadow: none;
+        }
+
+        input {
+          border-color: #4b5563;
+          background: #101318;
+          color: #eef2f7;
+        }
+
+        input:disabled {
+          color: #b8c0cc;
+          background: #242a34;
+        }
+
+        .time {
+          border-color: #303744;
+          background: #101318;
+        }
+
+        .status {
+          color: #c4ccd8;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main aria-labelledby="app-title">
+      <section class="timer-panel" aria-describedby="status-message">
+        <h1 id="app-title" hidden>Background Audio Pomodoro</h1>
+        <label for="minutes-input">
+          Minutes
+          <input
+            id="minutes-input"
+            inputmode="numeric"
+            min="1"
+            max="999"
+            name="minutes"
+            step="1"
+            type="number"
+            value="25"
+            aria-describedby="status-message"
+          />
+        </label>
+
+        <output
+          id="time-display"
+          class="time"
+          aria-live="polite"
+          aria-label="Time remaining"
+        >
+          25:00
+        </output>
+
+        <button id="toggle-button" type="button" aria-label="Start timer">
+          Start
+        </button>
+
+        <p id="status-message" class="status" role="status">
+          Press Start once while this tab is active so Chrome can allow sound.
+        </p>
+        <pre id="self-test-output" class="self-test" aria-live="polite"></pre>
+      </section>
+    </main>
+
+    <script>
+      (() => {
+        const IDLE = "idle";
+        const RUNNING = "running";
+        const PAUSED = "paused";
+        const COMPLETE = "complete";
+        const DEFAULT_TITLE = document.title;
+        const alarmPattern = [
+          { offset: 0, frequency: 784, duration: 0.18 },
+          { offset: 0.22, frequency: 988, duration: 0.18 },
+          { offset: 0.44, frequency: 1175, duration: 0.36 },
+        ];
+
+        const minutesInput = document.querySelector("#minutes-input");
+        const timeDisplay = document.querySelector("#time-display");
+        const toggleButton = document.querySelector("#toggle-button");
+        const statusMessage = document.querySelector("#status-message");
+        const selfTestOutput = document.querySelector("#self-test-output");
+
+        let state = IDLE;
+        let configuredSeconds = parseMinutes(minutesInput.value) * 60;
+        let remainingMs = configuredSeconds * 1000;
+        let endAtMs = 0;
+        let tickId = 0;
+        let audioContext = null;
+        let alarmNodes = [];
+        let hasScheduledAlarm = false;
+        let wakeLock = null;
+
+        function parseMinutes(value) {
+          const normalized = String(value).trim();
+          if (!/^\d+$/.test(normalized)) {
+            return null;
+          }
+
+          const parsed = Number(normalized);
+          if (!Number.isInteger(parsed) || parsed < 1 || parsed > 999) {
+            return null;
+          }
+
+          return parsed;
+        }
+
+        function formatRemaining(milliseconds) {
+          const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000));
+          const minutes = Math.floor(totalSeconds / 60);
+          const seconds = totalSeconds % 60;
+          return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+        }
+
+        function setStatus(message, tone = "") {
+          statusMessage.textContent = message;
+          if (tone) {
+            statusMessage.dataset.tone = tone;
+          } else {
+            delete statusMessage.dataset.tone;
+          }
+        }
+
+        function render() {
+          timeDisplay.value = formatRemaining(remainingMs);
+          timeDisplay.textContent = formatRemaining(remainingMs);
+          document.title =
+            state === RUNNING
+              ? `${formatRemaining(remainingMs)} - ${DEFAULT_TITLE}`
+              : DEFAULT_TITLE;
+
+          toggleButton.textContent = state === RUNNING ? "Pause" : "Start";
+          toggleButton.setAttribute(
+            "aria-label",
+            state === RUNNING ? "Pause timer" : "Start timer",
+          );
+          minutesInput.disabled = state === RUNNING || state === PAUSED;
+        }
+
+        function validateConfiguredTime() {
+          const minutes = parseMinutes(minutesInput.value);
+          if (!minutes) {
+            setStatus("Enter a whole number from 1 to 999 minutes.", "error");
+            return null;
+          }
+
+          configuredSeconds = minutes * 60;
+          remainingMs = configuredSeconds * 1000;
+          render();
+          return minutes;
+        }
+
+        async function ensureAudioReady() {
+          const AudioCtor = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtor) {
+            setStatus(
+              "This browser does not support Web Audio. The timer will still complete visually.",
+              "error",
+            );
+            return false;
+          }
+
+          if (!audioContext || audioContext.state === "closed") {
+            audioContext = new AudioCtor();
+          }
+
+          try {
+            await audioContext.resume();
+            playUnlockPulse();
+            return audioContext.state === "running";
+          } catch (error) {
+            setStatus(
+              "Chrome blocked audio startup. Enable site sound and press Start again.",
+              "error",
+            );
+            return false;
+          }
+        }
+
+        function playUnlockPulse() {
+          if (!audioContext) {
+            return;
+          }
+
+          const oscillator = audioContext.createOscillator();
+          const gain = audioContext.createGain();
+          const now = audioContext.currentTime;
+
+          oscillator.frequency.value = 440;
+          gain.gain.setValueAtTime(0.0001, now);
+          oscillator.connect(gain);
+          gain.connect(audioContext.destination);
+          oscillator.start(now);
+          oscillator.stop(now + 0.03);
+        }
+
+        function cancelScheduledAlarm() {
+          for (const node of alarmNodes) {
+            try {
+              node.stop();
+            } catch (error) {
+              // Already stopped nodes can be ignored.
+            }
+          }
+
+          alarmNodes = [];
+          hasScheduledAlarm = false;
+        }
+
+        function scheduleAlarm(delaySeconds) {
+          cancelScheduledAlarm();
+
+          if (!audioContext || audioContext.state !== "running") {
+            return false;
+          }
+
+          const startAt =
+            audioContext.currentTime + Math.max(0.05, delaySeconds);
+
+          for (const step of alarmPattern) {
+            const oscillator = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            const stepStart = startAt + step.offset;
+            const stepEnd = stepStart + step.duration;
+
+            oscillator.type = "sine";
+            oscillator.frequency.setValueAtTime(step.frequency, stepStart);
+            gain.gain.setValueAtTime(0.0001, stepStart);
+            gain.gain.exponentialRampToValueAtTime(0.18, stepStart + 0.015);
+            gain.gain.exponentialRampToValueAtTime(0.0001, stepEnd);
+            oscillator.connect(gain);
+            gain.connect(audioContext.destination);
+            oscillator.start(stepStart);
+            oscillator.stop(stepEnd + 0.03);
+            alarmNodes.push(oscillator);
+          }
+
+          hasScheduledAlarm = true;
+          return true;
+        }
+
+        async function requestOptionalNotificationPermission() {
+          if (
+            !("Notification" in window) ||
+            Notification.permission !== "default"
+          ) {
+            return;
+          }
+
+          try {
+            await Notification.requestPermission();
+          } catch (error) {
+            // Chrome only permits permission requests from user gestures.
+          }
+        }
+
+        function showCompletionNotification() {
+          if (
+            !("Notification" in window) ||
+            Notification.permission !== "granted"
+          ) {
+            return;
+          }
+
+          try {
+            new Notification("Timer complete", {
+              body: "Your timer finished and has reset.",
+              silent: true,
+            });
+          } catch (error) {
+            // Visual in-page status remains the fallback.
+          }
+        }
+
+        async function requestWakeLock() {
+          if (!("wakeLock" in navigator)) {
+            return;
+          }
+
+          try {
+            wakeLock = await navigator.wakeLock.request("screen");
+          } catch (error) {
+            wakeLock = null;
+          }
+        }
+
+        async function releaseWakeLock() {
+          if (!wakeLock) {
+            return;
+          }
+
+          try {
+            await wakeLock.release();
+          } catch (error) {
+            // The lock may already be released by the browser.
+          } finally {
+            wakeLock = null;
+          }
+        }
+
+        async function startTimer() {
+          if (state === IDLE || state === COMPLETE) {
+            if (!validateConfiguredTime()) {
+              return;
+            }
+          }
+
+          const audioReady = await ensureAudioReady();
+          requestOptionalNotificationPermission();
+          requestWakeLock();
+
+          state = RUNNING;
+          endAtMs = Date.now() + remainingMs;
+          hasScheduledAlarm = scheduleAlarm(remainingMs / 1000);
+          startTicker();
+          setStatus(
+            audioReady && hasScheduledAlarm
+              ? "Running. Audio was unlocked and scheduled on Chrome's audio clock."
+              : "Running visually. Enable Chrome site sound if the completion chime is blocked.",
+          );
+          render();
+        }
+
+        function pauseTimer() {
+          remainingMs = Math.max(0, endAtMs - Date.now());
+          state = PAUSED;
+          stopTicker();
+          cancelScheduledAlarm();
+          releaseWakeLock();
+          setStatus("Paused. Press Start to continue from the remaining time.");
+          render();
+        }
+
+        function finishTimer() {
+          stopTicker();
+          releaseWakeLock();
+          remainingMs = configuredSeconds * 1000;
+          state = COMPLETE;
+
+          if (!hasScheduledAlarm) {
+            scheduleAlarm(0.05);
+          }
+
+          showCompletionNotification();
+          setStatus(
+            "Done. Chime scheduled and display reset to the configured time.",
+            "done",
+          );
+          render();
+        }
+
+        function startTicker() {
+          stopTicker();
+          tickId = window.setInterval(updateCountdown, 250);
+          updateCountdown();
+        }
+
+        function stopTicker() {
+          if (tickId) {
+            window.clearInterval(tickId);
+            tickId = 0;
+          }
+        }
+
+        function updateCountdown() {
+          remainingMs = Math.max(0, endAtMs - Date.now());
+          render();
+
+          if (remainingMs <= 0) {
+            finishTimer();
+          }
+        }
+
+        function runSelfTest() {
+          const checks = [
+            ["parse valid minutes", parseMinutes("25") === 25],
+            ["reject zero", parseMinutes("0") === null],
+            ["reject decimals", parseMinutes("1.5") === null],
+            ["reject out of range", parseMinutes("1000") === null],
+            ["format one minute", formatRemaining(60000) === "01:00"],
+            ["format rounds up", formatRemaining(1001) === "00:02"],
+            ["format clamps negative", formatRemaining(-1) === "00:00"],
+          ];
+          const failures = checks.filter(([, passed]) => !passed);
+
+          selfTestOutput.classList.add("is-visible");
+          selfTestOutput.textContent =
+            failures.length === 0
+              ? `SELF TEST PASS\n${checks.map(([name]) => `PASS ${name}`).join("\n")}`
+              : `SELF TEST FAIL\n${failures.map(([name]) => `FAIL ${name}`).join("\n")}`;
+        }
+
+        minutesInput.addEventListener("input", () => {
+          if (state !== IDLE && state !== COMPLETE) {
+            return;
+          }
+
+          const minutes = parseMinutes(minutesInput.value);
+          if (minutes) {
+            configuredSeconds = minutes * 60;
+            remainingMs = configuredSeconds * 1000;
+            setStatus(
+              "Press Start once while this tab is active so Chrome can allow sound.",
+            );
+            render();
+          } else {
+            setStatus("Enter a whole number from 1 to 999 minutes.", "error");
+          }
+        });
+
+        toggleButton.addEventListener("click", () => {
+          if (state === RUNNING) {
+            pauseTimer();
+            return;
+          }
+
+          startTimer();
+        });
+
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible" && state === RUNNING) {
+            updateCountdown();
+          }
+        });
+
+        render();
+
+        if (new URLSearchParams(window.location.search).has("selftest")) {
+          runSelfTest();
+        }
+      })();
+    </script>
+  </body>
+</html>
