@@ -39,6 +39,14 @@ Playwright + local Chrome: browser self-test PASS
 Playwright clock fast-forward: completion reset PASS
 ```
 
+Screenshot evidence is included in:
+
+```text
+submissions/pomodoro-background-audio-foxhub2020/evidence/selftest.png
+submissions/pomodoro-background-audio-foxhub2020/evidence/running.png
+submissions/pomodoro-background-audio-foxhub2020/evidence/complete.png
+```
+
 ## Manual Test Matrix
 
 | Scenario                | Steps                                                         | Expected result                                                                                                                                         |
