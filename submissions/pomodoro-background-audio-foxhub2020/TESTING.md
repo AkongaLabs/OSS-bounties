@@ -45,6 +45,7 @@ Screenshot evidence is included in:
 submissions/pomodoro-background-audio-foxhub2020/evidence/selftest.png
 submissions/pomodoro-background-audio-foxhub2020/evidence/running.png
 submissions/pomodoro-background-audio-foxhub2020/evidence/complete.png
+submissions/pomodoro-background-audio-foxhub2020/evidence/demo.webm
 ```
 
 ## Manual Test Matrix
