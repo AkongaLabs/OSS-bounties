@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Background Audio Pomodoro Timer</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f7f4ed;
+        --panel: #fffaf1;
+        --text: #211f1b;
+        --muted: #6f675c;
+        --border: #ded5c6;
+        --accent: #b65f39;
+        --accent-pressed: #8f472a;
+        --danger: #9f2d2d;
+        --success: #3d7a4b;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #171511;
+          --panel: #232019;
+          --text: #f5efe5;
+          --muted: #bbb0a1;
+          --border: #403a30;
+          --accent: #de865e;
+          --accent-pressed: #f0a47e;
+          --danger: #ff8f8f;
+          --success: #82d495;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100dvh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(
+            circle at top left,
+            rgba(182, 95, 57, 0.12),
+            transparent 34rem
+          ),
+          var(--bg);
+        color: var(--text);
+        padding: 1.5rem;
+      }
+
+      main {
+        width: min(100%, 28rem);
+        padding: 2rem;
+        border: 1px solid var(--border);
+        border-radius: 1.5rem;
+        background: color-mix(in srgb, var(--panel) 92%, transparent);
+        box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.12);
+      }
+
+      label,
+      .status-label {
+        display: block;
+        margin-bottom: 0.5rem;
+        color: var(--muted);
+        font-size: 0.9rem;
+        font-weight: 650;
+      }
+
+      input {
+        width: 100%;
+        min-height: 3rem;
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--border);
+        border-radius: 0.9rem;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+      }
+
+      input:focus,
+      button:focus-visible {
+        outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent);
+        outline-offset: 2px;
+      }
+
+      .timer {
+        margin: 1.5rem 0;
+        font-variant-numeric: tabular-nums;
+        font-size: clamp(4rem, 20vw, 7rem);
+        font-weight: 800;
+        letter-spacing: -0.08em;
+        line-height: 0.9;
+        text-align: center;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+      }
+
+      button {
+        min-height: 3rem;
+        border: 0;
+        border-radius: 0.9rem;
+        color: white;
+        background: var(--accent);
+        font: inherit;
+        font-weight: 750;
+        cursor: pointer;
+        transition:
+          transform 120ms ease,
+          background-color 120ms ease,
+          opacity 120ms ease;
+      }
+
+      button:hover:not(:disabled) {
+        background: var(--accent-pressed);
+      }
+
+      button:active:not(:disabled) {
+        transform: scale(0.98);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+
+      .secondary {
+        color: var(--text);
+        background: color-mix(in srgb, var(--panel) 70%, var(--border));
+      }
+
+      .secondary:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--panel) 50%, var(--border));
+      }
+
+      .status {
+        min-height: 3.25rem;
+        margin-top: 1rem;
+        color: var(--muted);
+        font-size: 0.95rem;
+        line-height: 1.4;
+      }
+
+      .status.error {
+        color: var(--danger);
+      }
+
+      .status.done {
+        color: var(--success);
+      }
+
+      .test-results {
+        display: none;
+        margin-top: 1rem;
+        padding: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 0.9rem;
+        white-space: pre-wrap;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main aria-labelledby="timer-title">
+      <h1 id="timer-title">Pomodoro Timer</h1>
+
+      <label for="minutes">Timer length in minutes</label>
+      <input
+        id="minutes"
+        name="minutes"
+        type="number"
+        inputmode="numeric"
+        min="1"
+        max="999"
+        step="1"
+        value="25"
+        autocomplete="off"
+      />
+
+      <div id="display" class="timer" aria-live="polite">25:00</div>
+
+      <div class="controls">
+        <button id="startButton" type="button">Start</button>
+        <button id="pauseButton" class="secondary" type="button" disabled>
+          Pause
+        </button>
+      </div>
+
+      <div class="status-label">Status</div>
+      <div id="status" class="status" role="status" aria-live="polite">
+        Press Start once to unlock Chrome audio for this session.
+      </div>
+
+      <pre id="testResults" class="test-results"></pre>
+    </main>
+
+    <script>
+      (() => {
+        const MIN_MINUTES = 1;
+        const MAX_MINUTES = 999;
+        const TICK_MS = 250;
+        const WAKE_LOCK_RETRY_MS = 5000;
+
+        const minutesInput = document.getElementById("minutes");
+        const display = document.getElementById("display");
+        const startButton = document.getElementById("startButton");
+        const pauseButton = document.getElementById("pauseButton");
+        const status = document.getElementById("status");
+        const testResults = document.getElementById("testResults");
+
+        let configuredSeconds = 25 * 60;
+        let remainingMs = configuredSeconds * 1000;
+        let deadlineMs = 0;
+        let intervalId = 0;
+        let wakeLock = null;
+        let audioContext = null;
+        let scheduledNodes = [];
+        let state = "idle";
+
+        const pad2 = (value) => String(value).padStart(2, "0");
+
+        const formatTime = (totalSeconds) => {
+          const safeSeconds = Math.max(0, Math.ceil(totalSeconds));
+          const minutes = Math.floor(safeSeconds / 60);
+          const seconds = safeSeconds % 60;
+          return `${pad2(minutes)}:${pad2(seconds)}`;
+        };
+
+        const parseMinutes = (value) => {
+          const minutes = Number(value);
+          if (!Number.isInteger(minutes)) {
+            throw new Error("Enter a whole number of minutes.");
+          }
+          if (minutes < MIN_MINUTES || minutes > MAX_MINUTES) {
+            throw new Error(
+              `Enter a value from ${MIN_MINUTES} to ${MAX_MINUTES} minutes.`,
+            );
+          }
+          return minutes;
+        };
+
+        const setStatus = (message, variant = "") => {
+          status.textContent = message;
+          status.className = `status ${variant}`.trim();
+        };
+
+        const render = () => {
+          display.textContent = formatTime(remainingMs / 1000);
+          startButton.textContent = state === "paused" ? "Resume" : "Start";
+          startButton.disabled = state === "running";
+          pauseButton.disabled = state !== "running";
+          minutesInput.disabled = state === "running";
+        };
+
+        const cancelScheduledAlarm = () => {
+          for (const node of scheduledNodes) {
+            try {
+              node.stop();
+            } catch (_) {
+              // Node may already have ended. Nothing to clean up.
+            }
+            try {
+              node.disconnect();
+            } catch (_) {
+              // Disconnect is best-effort for already-finished nodes.
+            }
+          }
+          scheduledNodes = [];
+        };
+
+        const createAudioContext = () => {
+          if (audioContext) return audioContext;
+          const AudioContextClass =
+            window.AudioContext || window.webkitAudioContext;
+          if (!AudioContextClass) {
+            throw new Error("This browser does not support the Web Audio API.");
+          }
+          audioContext = new AudioContextClass();
+          return audioContext;
+        };
+
+        const unlockAudio = async () => {
+          const context = createAudioContext();
+          if (context.state === "suspended") await context.resume();
+
+          const oscillator = context.createOscillator();
+          const gain = context.createGain();
+          oscillator.type = "sine";
+          oscillator.frequency.value = 880;
+          gain.gain.value = 0.0001;
+          oscillator.connect(gain).connect(context.destination);
+          oscillator.start();
+          oscillator.stop(context.currentTime + 0.03);
+        };
+
+        const playAlarmPattern = (startAt) => {
+          if (!audioContext) return;
+          const pattern = [0, 0.28, 0.56, 0.98];
+
+          for (const offset of pattern) {
+            const oscillator = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            oscillator.type = "sine";
+            oscillator.frequency.setValueAtTime(
+              offset === 0.98 ? 660 : 880,
+              startAt + offset,
+            );
+            gain.gain.setValueAtTime(0.0001, startAt + offset);
+            gain.gain.exponentialRampToValueAtTime(
+              0.22,
+              startAt + offset + 0.02,
+            );
+            gain.gain.exponentialRampToValueAtTime(
+              0.0001,
+              startAt + offset + 0.2,
+            );
+            oscillator.connect(gain).connect(audioContext.destination);
+            oscillator.start(startAt + offset);
+            oscillator.stop(startAt + offset + 0.24);
+            scheduledNodes.push(oscillator);
+          }
+        };
+
+        const scheduleAlarm = () => {
+          cancelScheduledAlarm();
+          if (!audioContext || state !== "running") return;
+
+          const secondsUntilAlarm = Math.max(0.05, remainingMs / 1000);
+          playAlarmPattern(audioContext.currentTime + secondsUntilAlarm);
+        };
+
+        const playImmediateAlarm = async () => {
+          try {
+            await unlockAudio();
+            playAlarmPattern(audioContext.currentTime + 0.02);
+          } catch (error) {
+            setStatus(
+              `Timer finished, but sound could not play: ${error.message}. Enable site sound in Chrome and press Start again.`,
+              "error",
+            );
+          }
+        };
+
+        const requestWakeLock = async () => {
+          if (!("wakeLock" in navigator) || state !== "running") return;
+          try {
+            wakeLock = await navigator.wakeLock.request("screen");
+            wakeLock.addEventListener("release", () => {
+              wakeLock = null;
+            });
+          } catch (_) {
+            // Wake Lock is optional; timer accuracy is still based on wall-clock time.
+          }
+        };
+
+        const releaseWakeLock = async () => {
+          if (!wakeLock) return;
+          try {
+            await wakeLock.release();
+          } catch (_) {
+            // Ignore release failures; the browser may have already released it.
+          }
+          wakeLock = null;
+        };
+
+        const finishTimer = () => {
+          const alarmAlreadyScheduled = scheduledNodes.length > 0;
+          window.clearInterval(intervalId);
+          intervalId = 0;
+          state = "idle";
+          remainingMs = configuredSeconds * 1000;
+          releaseWakeLock();
+          setStatus(
+            "Timer complete. The display has reset to the configured time.",
+            "done",
+          );
+          render();
+          if (!alarmAlreadyScheduled) playImmediateAlarm();
+        };
+
+        const tick = () => {
+          if (state !== "running") return;
+          remainingMs = deadlineMs - Date.now();
+          if (remainingMs <= 0) {
+            finishTimer();
+            return;
+          }
+          render();
+        };
+
+        const startTimer = async () => {
+          try {
+            if (state !== "paused") {
+              const minutes = parseMinutes(minutesInput.value);
+              configuredSeconds = minutes * 60;
+              remainingMs = configuredSeconds * 1000;
+            }
+
+            await unlockAudio();
+            state = "running";
+            deadlineMs = Date.now() + remainingMs;
+            window.clearInterval(intervalId);
+            intervalId = window.setInterval(tick, TICK_MS);
+            scheduleAlarm();
+            requestWakeLock();
+            setStatus(
+              "Running. Chrome audio is unlocked for this timer session.",
+            );
+            render();
+          } catch (error) {
+            state = "idle";
+            setStatus(error.message, "error");
+            render();
+          }
+        };
+
+        const pauseTimer = () => {
+          if (state !== "running") return;
+          remainingMs = Math.max(0, deadlineMs - Date.now());
+          state = "paused";
+          window.clearInterval(intervalId);
+          intervalId = 0;
+          cancelScheduledAlarm();
+          releaseWakeLock();
+          setStatus(
+            "Paused. Press Resume to continue with the remaining time.",
+          );
+          render();
+        };
+
+        const syncConfiguredDisplay = () => {
+          if (state !== "idle") return;
+          try {
+            configuredSeconds = parseMinutes(minutesInput.value) * 60;
+            remainingMs = configuredSeconds * 1000;
+            setStatus(
+              "Ready. Press Start once to unlock Chrome audio for this session.",
+            );
+          } catch (error) {
+            setStatus(error.message, "error");
+          }
+          render();
+        };
+
+        const runSelfTests = () => {
+          const checks = [];
+          const expect = (name, actual, expected) => {
+            if (actual !== expected) {
+              throw new Error(`${name}: expected ${expected}, got ${actual}`);
+            }
+            checks.push(`PASS ${name}`);
+          };
+
+          expect("format zero", formatTime(0), "00:00");
+          expect("format partial rounds up", formatTime(1.2), "00:02");
+          expect("format one minute", formatTime(60), "01:00");
+          expect("parse min", parseMinutes("1"), 1);
+          expect("parse max", parseMinutes("999"), 999);
+
+          for (const badValue of ["", "0", "1000", "1.5", "abc"]) {
+            let rejected = false;
+            try {
+              parseMinutes(badValue);
+            } catch (_) {
+              rejected = true;
+            }
+            expect(`reject ${JSON.stringify(badValue)}`, rejected, true);
+          }
+
+          testResults.style.display = "block";
+          testResults.textContent = checks.join("\n");
+        };
+
+        startButton.addEventListener("click", startTimer);
+        pauseButton.addEventListener("click", pauseTimer);
+        minutesInput.addEventListener("input", syncConfiguredDisplay);
+
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") {
+            tick();
+            requestWakeLock();
+          }
+        });
+
+        window.setInterval(() => {
+          if (state === "running" && !wakeLock) requestWakeLock();
+        }, WAKE_LOCK_RETRY_MS);
+
+        if (new URLSearchParams(window.location.search).has("selftest")) {
+          runSelfTests();
+        }
+
+        syncConfiguredDisplay();
+      })();
+    </script>
+  </body>
+</html>
