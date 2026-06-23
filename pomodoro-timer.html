@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pomodoro Timer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --primary: #0f3460;
+    --accent: #e94560;
+    --text: #eee;
+    --muted: #999;
+    --success: #4caf50;
+    --warning: #ff9800;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .timer-container {
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 40px;
+    width: 360px;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  }
+
+  h1 {
+    font-size: 1.4rem;
+    margin-bottom: 24px;
+    font-weight: 600;
+  }
+
+  .input-group {
+    margin-bottom: 24px;
+  }
+
+  .input-group label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .input-group input {
+    width: 120px;
+    padding: 10px 14px;
+    border: 2px solid var(--primary);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 1.1rem;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .input-group input:focus {
+    border-color: var(--accent);
+  }
+
+  .input-group input[aria-invalid="true"] {
+    border-color: var(--accent);
+  }
+
+  .error-msg {
+    color: var(--accent);
+    font-size: 0.8rem;
+    margin-top: 4px;
+    min-height: 1.2em;
+  }
+
+  .display {
+    font-size: 4rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    margin: 20px 0;
+    letter-spacing: 2px;
+    transition: color 0.3s;
+  }
+
+  .display.running { color: var(--success); }
+  .display.paused { color: var(--warning); }
+  .display.completed { color: var(--accent); }
+
+  .status-label {
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 20px;
+    min-height: 1.2em;
+  }
+
+  .controls {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  button {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    outline: none;
+  }
+
+  button:hover { opacity: 0.9; }
+  button:active { transform: scale(0.97); }
+  button:focus-visible { box-shadow: 0 0 0 3px var(--accent); }
+
+  button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .btn-start {
+    background: var(--success);
+    color: #fff;
+  }
+
+  .btn-pause {
+    background: var(--warning);
+    color: #fff;
+  }
+
+  .btn-reset {
+    background: var(--primary);
+    color: var(--text);
+  }
+
+  .permission-banner {
+    background: rgba(233, 69, 96, 0.15);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 0.8rem;
+    color: var(--accent);
+    display: none;
+  }
+
+  .permission-banner.visible { display: block; }
+
+  .flash-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--accent);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    z-index: 100;
+  }
+
+  .flash-overlay.active {
+    opacity: 0.3;
+  }
+</style>
+</head>
+<body>
+
+<div class="flash-overlay" id="flashOverlay" aria-hidden="true"></div>
+
+<div class="timer-container" role="main">
+  <h1>Pomodoro Timer</h1>
+
+  <div class="permission-banner" id="permissionBanner" role="alert">
+    Sound is blocked. Click anywhere on the page, then allow audio when prompted.
+  </div>
+
+  <div class="input-group">
+    <label for="minutesInput">Minutes</label>
+    <input
+      type="number"
+      id="minutesInput"
+      min="1"
+      max="999"
+      value="25"
+      aria-label="Timer duration in minutes"
+      aria-invalid="false"
+    >
+    <div class="error-msg" id="errorMsg" role="alert"></div>
+  </div>
+
+  <div class="display" id="timerDisplay" aria-live="polite" aria-atomic="true">25:00</div>
+  <div class="status-label" id="statusLabel">Ready</div>
+
+  <div class="controls">
+    <button class="btn-start" id="btnStart" aria-label="Start timer">Start</button>
+    <button class="btn-pause" id="btnPause" aria-label="Pause timer" disabled>Pause</button>
+    <button class="btn-reset" id="btnReset" aria-label="Reset timer">Reset</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // State
+  let state = 'idle'; // idle | running | paused | completed
+  let totalMs = 0;
+  let deadline = 0;
+  let rafId = null;
+  let tickInterval = null;
+
+  // Elements
+  const input = document.getElementById('minutesInput');
+  const display = document.getElementById('timerDisplay');
+  const statusLabel = document.getElementById('statusLabel');
+  const errorMsg = document.getElementById('errorMsg');
+  const btnStart = document.getElementById('btnStart');
+  const btnPause = document.getElementById('btnPause');
+  const btnReset = document.getElementById('btnReset');
+  const flashOverlay = document.getElementById('flashOverlay');
+  const permissionBanner = document.getElementById('permissionBanner');
+
+  // Audio context - created on first user gesture
+  let audioCtx = null;
+
+  function getAudioContext() {
+    if (!audioCtx) {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch (e) {
+        return null;
+      }
+    }
+    // Resume if suspended (autoplay policy)
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(function() {});
+    }
+    return audioCtx;
+  }
+
+  // Play completion chime using Web Audio API (works in background tabs)
+  function playChime() {
+    var ctx = getAudioContext();
+    if (!ctx) return;
+
+    // Two-tone ascending chime
+    var now = ctx.currentTime;
+    var frequencies = [523.25, 659.25]; // C5, E5
+    var durations = [0.15, 0.25];
+
+    frequencies.forEach(function(freq, i) {
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.5, now + i * 0.2);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.2 + durations[i]);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + i * 0.2);
+      osc.stop(now + i * 0.2 + durations[i] + 0.05);
+    });
+  }
+
+  // Visual flash
+  function flashScreen() {
+    flashOverlay.classList.add('active');
+    setTimeout(function() { flashOverlay.classList.remove('active'); }, 300);
+    // Repeat flash 3 times
+    setTimeout(function() { flashOverlay.classList.add('active'); setTimeout(function() { flashOverlay.classList.remove('active'); }, 300); }, 600);
+    setTimeout(function() { flashOverlay.classList.add('active'); setTimeout(function() { flashOverlay.classList.remove('active'); }, 300); }, 1200);
+  }
+
+  // Format time as MM:SS
+  function formatTime(ms) {
+    var totalSec = Math.max(0, Math.ceil(ms / 1000));
+    var min = Math.floor(totalSec / 60);
+    var sec = totalSec % 60;
+    return (min < 10 ? '0' : '') + min + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  // Validate input
+  function validateInput() {
+    var val = input.value.trim();
+    if (val === '' || val === null) {
+      return { valid: false, msg: 'Enter a number of minutes' };
+    }
+    var num = Number(val);
+    if (!Number.isInteger(num) || num !== parseFloat(val)) {
+      return { valid: false, msg: 'Enter a whole number' };
+    }
+    if (num < 1) {
+      return { valid: false, msg: 'Minimum is 1 minute' };
+    }
+    if (num > 999) {
+      return { valid: false, msg: 'Maximum is 999 minutes' };
+    }
+    return { valid: true, msg: '' };
+  }
+
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    input.setAttribute('aria-invalid', msg ? 'true' : 'false');
+  }
+
+  // Update display
+  function updateDisplay() {
+    if (state === 'running' || state === 'paused') {
+      var remaining = deadline - Date.now();
+      display.textContent = formatTime(remaining);
+      document.title = formatTime(remaining) + ' - Pomodoro Timer';
+    }
+  }
+
+  // RAF loop for smooth display updates (visible tab)
+  function rafLoop() {
+    if (state !== 'running') return;
+    updateDisplay();
+    rafId = requestAnimationFrame(rafLoop);
+  }
+
+  // Interval fallback for background tab accuracy
+  function startBackgroundTick() {
+    stopBackgroundTick();
+    tickInterval = setInterval(function() {
+      if (state !== 'running') {
+        stopBackgroundTick();
+        return;
+      }
+      var remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        remaining = 0;
+        updateDisplay();
+        onTimerComplete();
+        return;
+      }
+      // Update document title even in background (tab title shows countdown)
+      document.title = formatTime(remaining) + ' - Pomodoro Timer';
+    }, 1000);
+  }
+
+  function stopBackgroundTick() {
+    if (tickInterval) {
+      clearInterval(tickInterval);
+      tickInterval = null;
+    }
+  }
+
+  // Timer complete
+  function onTimerComplete() {
+    state = 'completed';
+    stopBackgroundTick();
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+
+    display.textContent = '00:00';
+    display.className = 'display completed';
+    statusLabel.textContent = 'Time\'s up!';
+    document.title = '00:00 - Pomodoro Timer';
+
+    btnStart.disabled = true;
+    btnPause.disabled = true;
+    btnStart.textContent = 'Start';
+
+    // Play sound and flash
+    playChime();
+    flashScreen();
+
+    // Desktop notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification('Pomodoro Timer', { body: 'Time is up!', icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🍅</text></svg>' });
+      } catch (e) {}
+    }
+
+    // Reset after 3 seconds
+    setTimeout(function() {
+      if (state === 'completed') {
+        resetTimer();
+      }
+    }, 3000);
+  }
+
+  // Start timer
+  function startTimer() {
+    var validation = validateInput();
+    if (!validation.valid) {
+      showError(validation.msg);
+      return;
+    }
+    showError('');
+
+    // Ensure audio context is ready (must be called from user gesture)
+    getAudioContext();
+    // Request notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(function() {});
+    }
+
+    var mins = parseInt(input.value.trim(), 10);
+    totalMs = mins * 60 * 1000;
+    deadline = Date.now() + totalMs;
+
+    state = 'running';
+    display.className = 'display running';
+    statusLabel.textContent = 'Running';
+    input.disabled = true;
+    btnStart.disabled = true;
+    btnPause.disabled = false;
+    btnStart.textContent = 'Start';
+
+    updateDisplay();
+    rafLoop();
+    startBackgroundTick();
+  }
+
+  // Pause
+  function pauseTimer() {
+    if (state !== 'running') return;
+
+    // Save remaining time
+    var remaining = deadline - Date.now();
+    state = 'paused';
+    stopBackgroundTick();
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+
+    display.className = 'display paused';
+    statusLabel.textContent = 'Paused';
+    btnPause.disabled = true;
+    btnStart.disabled = false;
+    btnStart.textContent = 'Resume';
+
+    // Store remaining for resume
+    totalMs = remaining;
+  }
+
+  // Resume
+  function resumeTimer() {
+    if (state !== 'paused') return;
+
+    deadline = Date.now() + totalMs;
+    state = 'running';
+    display.className = 'display running';
+    statusLabel.textContent = 'Running';
+    btnStart.disabled = true;
+    btnPause.disabled = false;
+    btnStart.textContent = 'Start';
+
+    updateDisplay();
+    rafLoop();
+    startBackgroundTick();
+  }
+
+  // Reset
+  function resetTimer() {
+    state = 'idle';
+    stopBackgroundTick();
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+
+    var validation = validateInput();
+    var mins = validation.valid ? parseInt(input.value.trim(), 10) : 25;
+    display.textContent = formatTime(mins * 60 * 1000);
+    display.className = 'display';
+    statusLabel.textContent = 'Ready';
+    document.title = 'Pomodoro Timer';
+    input.disabled = false;
+    btnStart.disabled = false;
+    btnPause.disabled = true;
+    btnStart.textContent = 'Start';
+  }
+
+  // Event listeners
+  btnStart.addEventListener('click', function() {
+    if (state === 'idle' || state === 'completed') {
+      startTimer();
+    } else if (state === 'paused') {
+      resumeTimer();
+    }
+  });
+
+  btnPause.addEventListener('click', pauseTimer);
+  btnReset.addEventListener('click', resetTimer);
+
+  // Input validation on change
+  input.addEventListener('input', function() {
+    var validation = validateInput();
+    if (validation.valid || input.value.trim() === '') {
+      showError('');
+      if (state === 'idle') {
+        var mins = validation.valid ? parseInt(input.value.trim(), 10) : 0;
+        if (validation.valid) {
+          display.textContent = formatTime(mins * 60 * 1000);
+        }
+      }
+    }
+  });
+
+  input.addEventListener('blur', function() {
+    var validation = validateInput();
+    if (!validation.valid && input.value.trim() !== '') {
+      showError(validation.msg);
+    }
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', function(e) {
+    if (e.target === input && e.key !== 'Enter') return;
+
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      if (state === 'idle' || state === 'completed') {
+        startTimer();
+      } else if (state === 'running') {
+        pauseTimer();
+      } else if (state === 'paused') {
+        resumeTimer();
+      }
+    } else if (e.key === 'Escape') {
+      resetTimer();
+    }
+  });
+
+  // Check for permission issues on load
+  function checkAudioPermission() {
+    var ctx = getAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      permissionBanner.classList.add('visible');
+    }
+  }
+
+  // Visibility change - ensure timer keeps running
+  document.addEventListener('visibilitychange', function() {
+    if (state === 'running') {
+      // Check if we missed the deadline while tab was hidden
+      var remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        onTimerComplete();
+      } else {
+        updateDisplay();
+      }
+    }
+  });
+
+  // Initialize
+  resetTimer();
+  checkAudioPermission();
+})();
+</script>
+</body>
+</html>
