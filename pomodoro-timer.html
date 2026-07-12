@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pomodoro Timer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+
+        .container {
+            text-align: center;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 30px;
+            font-weight: 300;
+        }
+
+        .timer-input {
+            margin-bottom: 20px;
+        }
+
+        .timer-input label {
+            display: block;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .timer-input input {
+            width: 120px;
+            padding: 12px;
+            font-size: 1.2rem;
+            border: none;
+            border-radius: 10px;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            outline: none;
+        }
+
+        .timer-input input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .timer-display {
+            font-size: 6rem;
+            font-weight: 200;
+            margin: 30px 0;
+            font-variant-numeric: tabular-nums;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        button {
+            padding: 15px 40px;
+            font-size: 1.1rem;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .start-btn {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .start-btn:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+
+        .pause-btn {
+            background: #ff9800;
+            color: white;
+        }
+
+        .pause-btn:hover {
+            background: #f57c00;
+            transform: translateY(-2px);
+        }
+
+        .reset-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        .reset-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            margin-top: 20px;
+            font-size: 1rem;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🍅 Pomodoro Timer</h1>
+        
+        <div class="timer-input">
+            <label for="minutes">Set timer (minutes)</label>
+            <input type="number" id="minutes" min="1" max="120" value="25" placeholder="25">
+        </div>
+
+        <div class="timer-display" id="display">25:00</div>
+
+        <div class="controls">
+            <button class="start-btn" id="startBtn" onclick="startTimer()">Start</button>
+            <button class="pause-btn" id="pauseBtn" onclick="pauseTimer()" disabled>Pause</button>
+            <button class="reset-btn" id="resetBtn" onclick="resetTimer()">Reset</button>
+        </div>
+
+        <div class="status" id="status">Ready to focus!</div>
+    </div>
+
+    <script>
+        let timerInterval = null;
+        let totalSeconds = 0;
+        let remainingSeconds = 0;
+        let isRunning = false;
+        let audioContext = null;
+
+        // Initialize Audio Context (required for background playback)
+        function initAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            // Resume if suspended (browser autoplay policy)
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+        }
+
+        // Play notification sound using Web Audio API
+        // This works even when tab is in background!
+        function playNotification() {
+            initAudio();
+            
+            // Create a pleasant chime sound
+            const frequencies = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+            
+            frequencies.forEach((freq, i) => {
+                setTimeout(() => {
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    
+                    oscillator.frequency.value = freq;
+                    oscillator.type = 'sine';
+                    
+                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+                    
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + 0.5);
+                }, i * 150);
+            });
+        }
+
+        function updateDisplay() {
+            const minutes = Math.floor(remainingSeconds / 60);
+            const seconds = remainingSeconds % 60;
+            const display = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            document.getElementById('display').textContent = display;
+            document.title = `${display} - Pomodoro Timer`;
+        }
+
+        function startTimer() {
+            if (isRunning) return;
+            
+            initAudio();
+            
+            if (remainingSeconds === 0) {
+                const minutes = parseInt(document.getElementById('minutes').value) || 25;
+                totalSeconds = minutes * 60;
+                remainingSeconds = totalSeconds;
+            }
+
+            isRunning = true;
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('pauseBtn').disabled = false;
+            document.getElementById('minutes').disabled = true;
+            document.getElementById('status').textContent = 'Focus time! 🎯';
+
+            timerInterval = setInterval(() => {
+                remainingSeconds--;
+                updateDisplay();
+
+                if (remainingSeconds <= 0) {
+                    clearInterval(timerInterval);
+                    isRunning = false;
+                    playNotification();
+                    document.getElementById('status').textContent = 'Time\'s up! Take a break ☕';
+                    document.getElementById('startBtn').disabled = false;
+                    document.getElementById('pauseBtn').disabled = true;
+                    document.getElementById('minutes').disabled = false;
+                    
+                    // Reset display back to original time after 3 seconds
+                    setTimeout(() => {
+                        const minutes = parseInt(document.getElementById('minutes').value) || 25;
+                        remainingSeconds = minutes * 60;
+                        updateDisplay();
+                        document.getElementById('status').textContent = 'Ready to focus!';
+                    }, 3000);
+                }
+            }, 1000);
+        }
+
+        function pauseTimer() {
+            if (!isRunning) return;
+            
+            clearInterval(timerInterval);
+            isRunning = false;
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('pauseBtn').disabled = true;
+            document.getElementById('status').textContent = 'Paused ⏸️';
+        }
+
+        function resetTimer() {
+            clearInterval(timerInterval);
+            isRunning = false;
+            
+            const minutes = parseInt(document.getElementById('minutes').value) || 25;
+            totalSeconds = minutes * 60;
+            remainingSeconds = totalSeconds;
+            
+            updateDisplay();
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('pauseBtn').disabled = true;
+            document.getElementById('minutes').disabled = false;
+            document.getElementById('status').textContent = 'Ready to focus!';
+        }
+
+        // Update timer when input changes
+        document.getElementById('minutes').addEventListener('input', function() {
+            if (!isRunning) {
+                const minutes = parseInt(this.value) || 25;
+                totalSeconds = minutes * 60;
+                remainingSeconds = totalSeconds;
+                updateDisplay();
+            }
+        });
+
+        // Initialize display
+        updateDisplay();
+    </script>
+</body>
+</html>
