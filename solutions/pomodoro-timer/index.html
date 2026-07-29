@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Background Pomodoro Timer</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --text: #e7ecf3;
+      --muted: #8b9bb4;
+      --accent: #3d8bfd;
+      --go: #2f9e44;
+      --stop: #e03131;
+      --warn: #f08c00;
+      --focus: #74c0fc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: radial-gradient(1200px 600px at 50% -10%, #1c2a44 0%, var(--bg) 55%);
+      color: var(--text);
+      padding: 1.25rem;
+    }
+    main {
+      width: min(420px, 100%);
+      background: color-mix(in srgb, var(--panel) 92%, black);
+      border: 1px solid #2a384d;
+      border-radius: 16px;
+      padding: 1.5rem;
+      box-shadow: 0 20px 50px rgba(0,0,0,.35);
+    }
+    h1 {
+      margin: 0 0 .35rem;
+      font-size: 1.15rem;
+      font-weight: 650;
+      letter-spacing: .01em;
+    }
+    .sub {
+      margin: 0 0 1.25rem;
+      color: var(--muted);
+      font-size: .9rem;
+      line-height: 1.4;
+    }
+    label {
+      display: block;
+      font-size: .85rem;
+      color: var(--muted);
+      margin-bottom: .4rem;
+    }
+    .row {
+      display: flex;
+      gap: .75rem;
+      align-items: end;
+      margin-bottom: 1.25rem;
+    }
+    input[type="number"] {
+      flex: 1;
+      min-height: 48px;
+      border-radius: 10px;
+      border: 1px solid #334155;
+      background: #0b1220;
+      color: var(--text);
+      font-size: 1.1rem;
+      padding: .65rem .85rem;
+    }
+    input[type="number"]:focus {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+    .display {
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      font-size: clamp(2.8rem, 12vw, 3.6rem);
+      font-weight: 700;
+      letter-spacing: .04em;
+      margin: .25rem 0 1rem;
+      line-height: 1;
+    }
+    .state {
+      text-align: center;
+      min-height: 1.4rem;
+      margin-bottom: 1rem;
+      font-size: .95rem;
+      color: var(--muted);
+    }
+    .state[data-kind="running"] { color: var(--go); }
+    .state[data-kind="paused"] { color: var(--warn); }
+    .state[data-kind="done"] { color: var(--accent); }
+    .state[data-kind="error"] { color: #ffa8a8; }
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .75rem;
+    }
+    button {
+      min-height: 48px;
+      border: 0;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: white;
+    }
+    button:focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+    button:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+    #startPause { background: var(--go); }
+    #startPause[data-mode="pause"] { background: var(--warn); color: #111; }
+    #reset { background: #334155; }
+    .notes {
+      margin-top: 1.15rem;
+      padding-top: 1rem;
+      border-top: 1px solid #2a384d;
+      color: var(--muted);
+      font-size: .8rem;
+      line-height: 1.45;
+    }
+    .notes strong { color: #c5d0e0; }
+    .badge {
+      display: inline-block;
+      margin-top: .5rem;
+      padding: .2rem .5rem;
+      border-radius: 999px;
+      background: #132033;
+      border: 1px solid #2a384d;
+      font-size: .75rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Background Pomodoro Timer</h1>
+    <p class="sub">Reliable countdown with end-time timing and unlocked audio so the chime can fire when the tab is in the background.</p>
+
+    <label for="minutes">Minutes (1–999)</label>
+    <div class="row">
+      <input id="minutes" type="number" min="1" max="999" step="1" value="25" inputmode="numeric" aria-describedby="status" />
+    </div>
+
+    <div id="display" class="display" role="timer" aria-live="polite" aria-atomic="true">25:00</div>
+    <div id="status" class="state" data-kind="idle" aria-live="polite">Ready — press Start (this unlocks sound)</div>
+
+    <div class="controls">
+      <button id="startPause" type="button" data-mode="start" aria-label="Start timer">Start</button>
+      <button id="reset" type="button" aria-label="Reset timer">Reset</button>
+    </div>
+
+    <div class="notes">
+      <strong>How background audio works:</strong> Start unlocks an <code>AudioContext</code> and keeps a silent keep-alive oscillator while the timer runs. Remaining time is derived from an absolute end timestamp (not interval ticks), so Chrome background throttling does not drift the clock. Desktop notification is requested as a backup when the tab is hidden.
+      <div class="badge" id="audioBadge">Audio: locked</div>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      const $ = (id) => document.getElementById(id);
+      const minutesInput = $('minutes');
+      const display = $('display');
+      const status = $('status');
+      const startPause = $('startPause');
+      const resetBtn = $('reset');
+      const audioBadge = $('audioBadge');
+
+      /** @type {AudioContext | null} */
+      let audioCtx = null;
+      /** @type {OscillatorNode | null} */
+      let keepAlive = null;
+      /** @type {GainNode | null} */
+      let keepAliveGain = null;
+
+      let configuredMs = 25 * 60 * 1000;
+      let remainingMs = configuredMs;
+      let endAt = null; // absolute epoch ms when running
+      let running = false;
+      let raf = null;
+      let intervalId = null;
+
+      function setStatus(kind, text) {
+        status.dataset.kind = kind;
+        status.textContent = text;
+      }
+
+      function clampMinutes(raw) {
+        const n = Number(raw);
+        if (!Number.isFinite(n)) return null;
+        const i = Math.floor(n);
+        if (i < 1 || i > 999) return null;
+        return i;
+      }
+
+      function format(ms) {
+        const total = Math.max(0, Math.ceil(ms / 1000));
+        const m = Math.floor(total / 60);
+        const s = total % 60;
+        return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+      }
+
+      function paint() {
+        display.textContent = format(remainingMs);
+      }
+
+      async function ensureAudio() {
+        if (!audioCtx) {
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          if (!Ctx) throw new Error('Web Audio API not available');
+          audioCtx = new Ctx();
+        }
+        if (audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+        }
+        audioBadge.textContent = 'Audio: unlocked (' + audioCtx.state + ')';
+        return audioCtx;
+      }
+
+      function startKeepAlive() {
+        if (!audioCtx || keepAlive) return;
+        // Near-silent tone keeps the context active in many Chrome configurations
+        // while the tab is backgrounded (paired with user-gesture unlock).
+        keepAliveGain = audioCtx.createGain();
+        keepAliveGain.gain.value = 0.00001;
+        keepAliveGain.connect(audioCtx.destination);
+        keepAlive = audioCtx.createOscillator();
+        keepAlive.frequency.value = 20;
+        keepAlive.type = 'sine';
+        keepAlive.connect(keepAliveGain);
+        keepAlive.start();
+      }
+
+      function stopKeepAlive() {
+        try { keepAlive && keepAlive.stop(); } catch (_) {}
+        try { keepAlive && keepAlive.disconnect(); } catch (_) {}
+        try { keepAliveGain && keepAliveGain.disconnect(); } catch (_) {}
+        keepAlive = null;
+        keepAliveGain = null;
+      }
+
+      function playChime() {
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+        const notes = [523.25, 659.25, 783.99]; // C5 E5 G5
+        notes.forEach((freq, i) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.0001, now + i * 0.12);
+          gain.gain.exponentialRampToValueAtTime(0.18, now + i * 0.12 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.12 + 0.55);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now + i * 0.12);
+          osc.stop(now + i * 0.12 + 0.6);
+        });
+      }
+
+      async function notifyDone() {
+        try {
+          if ('Notification' in window) {
+            if (Notification.permission === 'default') {
+              await Notification.requestPermission();
+            }
+            if (Notification.permission === 'granted') {
+              new Notification('Timer complete', {
+                body: 'Your focus block finished.',
+                silent: false,
+              });
+            }
+          }
+        } catch (_) {}
+      }
+
+      function syncFromClock() {
+        if (!running || endAt == null) return;
+        remainingMs = Math.max(0, endAt - Date.now());
+        paint();
+        if (remainingMs <= 0) complete();
+      }
+
+      function complete() {
+        running = false;
+        endAt = null;
+        stopTickers();
+        stopKeepAlive();
+        remainingMs = configuredMs;
+        paint();
+        startPause.dataset.mode = 'start';
+        startPause.textContent = 'Start';
+        startPause.setAttribute('aria-label', 'Start timer');
+        setStatus('done', 'Done — chime played (and notification if allowed). Ready again.');
+        try { playChime(); } catch (e) {
+          setStatus('error', 'Timer finished, but audio failed: ' + (e && e.message ? e.message : e));
+        }
+        notifyDone();
+        // second delayed chime helps if first was suppressed
+        setTimeout(() => { try { playChime(); } catch (_) {} }, 350);
+      }
+
+      function stopTickers() {
+        if (raf) cancelAnimationFrame(raf);
+        raf = null;
+        if (intervalId) clearInterval(intervalId);
+        intervalId = null;
+      }
+
+      function startTickers() {
+        stopTickers();
+        // rAF for foreground smoothness
+        const loop = () => {
+          syncFromClock();
+          if (running) raf = requestAnimationFrame(loop);
+        };
+        raf = requestAnimationFrame(loop);
+        // interval still fires (throttled) in background; absolute clock keeps accuracy
+        intervalId = setInterval(syncFromClock, 250);
+      }
+
+      async function start() {
+        const mins = clampMinutes(minutesInput.value);
+        if (mins == null) {
+          setStatus('error', 'Enter whole minutes between 1 and 999.');
+          minutesInput.focus();
+          return;
+        }
+        try {
+          await ensureAudio();
+        } catch (e) {
+          setStatus('error', 'Could not unlock audio. Allow sound for this site, then press Start again.');
+          // still allow visual timer
+        }
+
+        if (!running && remainingMs === configuredMs) {
+          configuredMs = mins * 60 * 1000;
+          remainingMs = configuredMs;
+        } else if (!running && minutesInput.value && clampMinutes(minutesInput.value) != null
+                   && remainingMs === configuredMs) {
+          // no-op
+        }
+
+        // If user changed minutes while idle/full, adopt new value
+        if (!running && remainingMs === configuredMs) {
+          configuredMs = mins * 60 * 1000;
+          remainingMs = configuredMs;
+        }
+
+        endAt = Date.now() + remainingMs;
+        running = true;
+        startKeepAlive();
+        startTickers();
+        startPause.dataset.mode = 'pause';
+        startPause.textContent = 'Pause';
+        startPause.setAttribute('aria-label', 'Pause timer');
+        minutesInput.disabled = true;
+        setStatus('running', 'Running — safe to background this tab.');
+        // Request notification permission proactively after gesture
+        if ('Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission().catch(() => {});
+        }
+        paint();
+      }
+
+      function pause() {
+        if (!running) return;
+        syncFromClock();
+        running = false;
+        endAt = null;
+        stopTickers();
+        stopKeepAlive();
+        startPause.dataset.mode = 'start';
+        startPause.textContent = 'Start';
+        startPause.setAttribute('aria-label', 'Resume timer');
+        setStatus('paused', 'Paused.');
+      }
+
+      function reset() {
+        running = false;
+        endAt = null;
+        stopTickers();
+        stopKeepAlive();
+        const mins = clampMinutes(minutesInput.value) ?? Math.round(configuredMs / 60000);
+        configuredMs = Math.min(999, Math.max(1, mins)) * 60 * 1000;
+        remainingMs = configuredMs;
+        minutesInput.disabled = false;
+        startPause.dataset.mode = 'start';
+        startPause.textContent = 'Start';
+        startPause.setAttribute('aria-label', 'Start timer');
+        setStatus('idle', 'Ready — press Start (this unlocks sound)');
+        paint();
+      }
+
+      startPause.addEventListener('click', () => {
+        if (running) pause();
+        else start();
+      });
+      resetBtn.addEventListener('click', reset);
+
+      minutesInput.addEventListener('change', () => {
+        if (running) return;
+        const mins = clampMinutes(minutesInput.value);
+        if (mins == null) {
+          setStatus('error', 'Enter whole minutes between 1 and 999.');
+          return;
+        }
+        configuredMs = mins * 60 * 1000;
+        remainingMs = configuredMs;
+        setStatus('idle', 'Ready — press Start (this unlocks sound)');
+        paint();
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') syncFromClock();
+      });
+
+      // keyboard: Space toggles when not typing in input
+      document.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' && e.target === document.body) {
+          e.preventDefault();
+          startPause.click();
+        }
+      });
+
+      paint();
+    })();
+  </script>
+</body>
+</html>
