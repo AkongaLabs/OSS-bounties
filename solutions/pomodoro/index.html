@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pomodoro timer</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #172333; background: #f2f4f7; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; }
+    main { box-sizing: border-box; width: min(100% - 2rem, 30rem); padding: 2rem; background: #fff; border: 2px solid #bcc7d3; border-radius: 1rem; }
+    h1 { margin: 0 0 1.5rem; font-size: 1.5rem; }
+    label { display: block; font-weight: 600; }
+    input { box-sizing: border-box; width: 8rem; margin-top: .4rem; padding: .6rem; border: 1px solid #5e6c7c; border-radius: .3rem; font: inherit; }
+    #timer { display: block; margin: 1.2rem 0; font: 600 clamp(2.5rem, 12vw, 4.5rem)/1.2 ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .controls { display: flex; gap: .8rem; }
+    button { padding: .7rem 1.3rem; border: 2px solid #174a78; border-radius: .4rem; background: #174a78; color: #fff; font: 600 1rem system-ui; cursor: pointer; }
+    button:disabled { border-color: #c4ccd5; background: #e8ecf1; color: #556170; cursor: default; }
+    :focus-visible { outline: 3px solid #9c4b00; outline-offset: 4px; }
+    #status { min-height: 1.6em; font-weight: 600; }
+    .help, #audio-status { font-size: .88rem; line-height: 1.5; color: #455469; }
+    #input-error { color: #a11616; min-height: 1.5em; margin: .2rem 0; font-size: .9rem; }
+    main[data-state="running"] { border-color: #174a78; }
+    main[data-state="paused"] { border-color: #9c4b00; }
+    main[data-state="completed"] { border-color: #24653c; background: #f1faf4; }
+  </style>
+</head>
+<body>
+<main id="app" data-state="idle">
+  <h1>Pomodoro timer</h1>
+  <label for="minutes">Minutes</label>
+  <input id="minutes" type="text" inputmode="numeric" pattern="[0-9]+" value="25" autocomplete="off" aria-describedby="input-help input-error">
+  <p id="input-help" class="help">1–999 whole minutes. Changing this while paused resets the timer.</p>
+  <p id="input-error" role="alert"></p>
+  <output id="timer" role="timer" aria-live="off" aria-label="25 minutes 0 seconds remaining" tabindex="0">25:00</output>
+  <div class="controls">
+    <button id="start" type="button" aria-label="Start timer">Start</button>
+    <button id="pause" type="button" aria-label="Pause timer" disabled>Pause</button>
+  </div>
+  <p id="status" role="status" aria-live="polite">Ready.</p>
+  <p id="audio-status" role="status" aria-live="polite">Start makes a quiet sound check, then schedules the completion chime.</p>
+  <p class="help">If the check is silent: unmute the tab and device, then open Chrome's site controls → Site settings → Sound → Allow. Pause and resume to retry. Keep this page open and your computer awake.</p>
+  <p class="help">Tab to a control and press Space or Enter. Space outside the minutes field also starts or pauses.</p>
+</main>
+<script>
+'use strict';
+
+function parseMinutes(text) {
+  const value = String(text).trim();
+  if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 999) {
+    throw new Error('Enter a whole number from 1 to 999 minutes.');
+  }
+  return Number(value);
+}
+
+function formatTime(milliseconds) {
+  const seconds = Math.ceil(Math.max(0, milliseconds) / 1000);
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+class Timer {
+  constructor(now) { this.now = now; this.configure(25); }
+  configure(minutes) {
+    this.minutes = minutes;
+    this.remaining = minutes * 60000;
+    this.state = 'idle';
+    this.deadline = null;
+  }
+  start(minutes) {
+    if (this.state === 'running') return;
+    if (this.state !== 'paused' || minutes !== this.minutes) this.configure(minutes);
+    this.deadline = this.now() + this.remaining;
+    this.state = 'running';
+  }
+  timeLeft() { return this.state === 'running' ? Math.max(0, this.deadline - this.now()) : this.remaining; }
+  pause() { this.remaining = this.timeLeft(); this.deadline = null; this.state = 'paused'; }
+  complete() { this.state = 'completed'; this.deadline = null; this.remaining = this.minutes * 60000; }
+}
+
+class Chime {
+  constructor(createContext, stateChanged, ended) {
+    this.createContext = createContext;
+    this.stateChanged = stateChanged;
+    this.ended = ended;
+    this.context = null;
+    this.alarm = [];
+    this.check = [];
+    this.at = null;
+  }
+  prepare() {
+    // Called directly from Start/Resume, before any asynchronous work.
+    try {
+      if (!this.context || this.context.state === 'closed') {
+        const context = this.createContext();
+        this.context = context;
+        context.onstatechange = () => { if (this.context === context) this.stateChanged(context.state); };
+      }
+      return Promise.resolve(this.context.resume()).then(() => this.context?.state === 'running');
+    } catch (error) { return Promise.reject(error); }
+  }
+  stop(nodes) {
+    for (const { oscillator, gain } of nodes) {
+      oscillator.onended = null;
+      try { oscillator.stop(); } catch (_) { /* Already ended. */ }
+      oscillator.disconnect();
+      gain.disconnect();
+    }
+    nodes.length = 0;
+  }
+  cancel() { this.stop(this.alarm); this.stop(this.check); this.at = null; }
+  note(nodes, when, frequency, duration, volume) {
+    const oscillator = this.context.createOscillator();
+    const gain = this.context.createGain();
+    nodes.push({ oscillator, gain });
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0, when);
+    gain.gain.linearRampToValueAtTime(volume, when + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+    oscillator.connect(gain);
+    gain.connect(this.context.destination);
+    oscillator.start(when);
+    oscillator.stop(when + duration + 0.01);
+    return oscillator;
+  }
+  schedule(milliseconds) {
+    this.stop(this.alarm);
+    if (this.context?.state !== 'running') throw new Error('Audio is not running.');
+    this.at = this.context.currentTime + Math.max(0, milliseconds) / 1000;
+    try {
+      this.note(this.alarm, this.at, 880, 0.18, 0.14);
+      const last = this.note(this.alarm, this.at + 0.25, 660, 0.28, 0.14);
+      last.onended = () => { this.stop(this.alarm); this.at = null; this.ended(); };
+    } catch (error) { this.cancel(); throw error; }
+  }
+  soundCheck() {
+    this.stop(this.check);
+    const tone = this.note(this.check, this.context.currentTime + 0.01, 660, 0.06, 0.045);
+    tone.onended = () => this.stop(this.check);
+  }
+  settle() {
+    // Normal completion must not cut off the already-scheduled chime. If the
+    // audio clock stopped, cancel a stale future alarm instead of ringing later.
+    if (this.context?.state !== 'running' || (this.at !== null && this.at - this.context.currentTime > 0.15)) this.cancel();
+  }
+  close() {
+    this.cancel();
+    if (this.context) {
+      this.context.onstatechange = null;
+      try { Promise.resolve(this.context.close()).catch(() => {}); } catch (_) { /* Already closed. */ }
+      this.context = null;
+    }
+  }
+}
+
+function mount(document, window) {
+  const get = id => document.getElementById(id);
+  const input = get('minutes'), display = get('timer'), start = get('start'), pause = get('pause');
+  const status = get('status'), audioStatus = get('audio-status'), error = get('input-error');
+  const timer = new Timer(() => window.performance.now());
+  let generation = 0;
+  let interval;
+  const soundHelp = 'Sound unavailable. Enable Chrome site Sound and unmute your device, then pause/resume to retry. The visual timer still works.';
+  const chime = new Chime(() => {
+    if (!window.AudioContext) throw new Error('Web Audio is unavailable.');
+    return new window.AudioContext();
+  }, state => {
+    if (state !== 'running') { chime.cancel(); audioStatus.textContent = soundHelp; }
+    else if (timer.state === 'running') arm();
+  }, () => tick());
+
+  function render() {
+    const left = timer.timeLeft();
+    display.textContent = formatTime(left);
+    const seconds = Math.ceil(left / 1000);
+    display.setAttribute('aria-label', `${Math.floor(seconds / 60)} minutes ${seconds % 60} seconds remaining`);
+    get('app').dataset.state = timer.state;
+    input.disabled = timer.state === 'running';
+    start.disabled = timer.state === 'running';
+    pause.disabled = timer.state !== 'running';
+    start.textContent = timer.state === 'paused' ? 'Resume' : 'Start';
+    start.setAttribute('aria-label', `${start.textContent} timer`);
+    document.title = timer.state === 'completed' ? 'Time is up — Pomodoro' : `${display.textContent} — Pomodoro`;
+  }
+  function tick() {
+    if (timer.state === 'running' && timer.timeLeft() === 0) {
+      generation++;
+      timer.complete();
+      chime.settle();
+      status.textContent = `Completed at 00:00. Ready for another ${timer.minutes}-minute timer.`;
+      audioStatus.textContent = 'Timer finished. If no chime was heard, check Chrome site Sound and device volume before the next run.';
+    }
+    render();
+  }
+  function arm() {
+    tick();
+    if (timer.state !== 'running') return;
+    try {
+      chime.schedule(timer.timeLeft());
+      audioStatus.textContent = 'Chime scheduled. If the start beep was silent, unmute Chrome and your device; pause/resume to retry.';
+    } catch (_) { chime.cancel(); audioStatus.textContent = soundHelp; }
+  }
+  function begin() {
+    if (timer.state === 'running') return;
+    let minutes;
+    try { minutes = parseMinutes(input.value); }
+    catch (failure) { error.textContent = failure.message; input.setAttribute('aria-invalid', 'true'); input.focus(); return; }
+    error.textContent = '';
+    input.removeAttribute('aria-invalid');
+    chime.cancel();
+    timer.start(minutes);
+    const attempt = ++generation;
+    // resume() is invoked inside this user event; the countdown never waits on
+    // a permission promise, which can remain unresolved when playback is blocked.
+    const ready = chime.prepare();
+    status.textContent = 'Running.';
+    audioStatus.textContent = 'Preparing sound. If no check beep is heard, enable sound in Chrome and pause/resume to retry.';
+    render();
+    ready.then(running => {
+      if (attempt !== generation || timer.state !== 'running') return;
+      if (!running) { audioStatus.textContent = soundHelp; return; }
+      arm();
+      if (timer.state === 'running') {
+        try { chime.soundCheck(); } catch (_) { audioStatus.textContent = soundHelp; }
+      }
+    }).catch(() => { if (attempt === generation) { chime.cancel(); audioStatus.textContent = soundHelp; } });
+  }
+  function pauseTimer() {
+    tick();
+    if (timer.state !== 'running') return;
+    generation++;
+    timer.pause();
+    chime.cancel();
+    status.textContent = 'Paused. Resume to continue, or change minutes to reset.';
+    audioStatus.textContent = 'No chime is scheduled while paused. Resume makes a new sound check.';
+    render();
+  }
+  start.addEventListener('click', begin);
+  pause.addEventListener('click', pauseTimer);
+  input.addEventListener('input', () => {
+    if (timer.state === 'running') return;
+    generation++;
+    chime.cancel();
+    audioStatus.textContent = 'No chime scheduled. Start makes a quiet sound check, then schedules the completion chime.';
+    try {
+      timer.configure(parseMinutes(input.value));
+      error.textContent = ''; input.removeAttribute('aria-invalid'); status.textContent = 'Ready.';
+      render();
+    } catch (failure) { error.textContent = failure.message; input.setAttribute('aria-invalid', 'true'); }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key !== ' ' || event.repeat || event.target.isContentEditable || /^(INPUT|TEXTAREA|BUTTON|A)$/.test(event.target.tagName)) return;
+    event.preventDefault();
+    if (timer.state === 'running') pauseTimer(); else begin();
+  });
+  document.addEventListener('visibilitychange', tick);
+  document.addEventListener('resume', tick);
+  window.addEventListener('pagehide', () => { pauseTimer(); chime.close(); window.clearInterval(interval); });
+  window.addEventListener('pageshow', () => { window.clearInterval(interval); interval = window.setInterval(tick, 250); tick(); });
+  interval = window.setInterval(tick, 250);
+  render();
+  return { timer, chime, tick };
+}
+
+if (typeof module !== 'undefined' && module.exports) module.exports = { parseMinutes, formatTime, Timer, Chime, mount };
+else mount(document, window);
+</script>
+</body>
+</html>
