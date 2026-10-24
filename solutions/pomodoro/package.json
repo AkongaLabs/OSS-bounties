@@ -1,0 +1,9 @@
+{
+  "name": "single-file-pomodoro",
+  "private": true,
+  "scripts": {
+    "dev": "bun dev.mjs",
+    "build": "bun build.mjs",
+    "test": "bun test"
+  }
+}
