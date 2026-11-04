@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pomodoro Timer — Background-Reliable Chrome Prototype</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #cbd5e1;
+      --primary: #38bdf8;
+      --primary-hover: #0284c7;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --focus: #facc15;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      line-height: 1.5;
+    }
+    main {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 0.5rem;
+    }
+    .status-badge {
+      display: block;
+      width: fit-content;
+      margin: 0 auto 1.25rem;
+      padding: 0.25rem 0.85rem;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      background: #0b1120;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .status-badge[data-state="running"] { color: var(--primary); border-color: var(--primary); }
+    .status-badge[data-state="paused"] { color: var(--warning); border-color: var(--warning); }
+    .status-badge[data-state="completed"] { color: var(--success); border-color: var(--success); }
+
+    .timer-display {
+      font-size: 4.5rem;
+      font-weight: 800;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.04em;
+      padding: 1rem 0;
+      margin-bottom: 1.25rem;
+      border-radius: 12px;
+      background: #0b1120;
+      border: 2px solid var(--border);
+      transition: border-color 0.2s, background-color 0.2s;
+    }
+    .timer-display.completed-flash {
+      border-color: var(--success);
+      background-color: rgba(34, 197, 94, 0.12);
+    }
+
+    .input-group {
+      margin-bottom: 1.25rem;
+    }
+    label {
+      display: block;
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+      color: var(--muted);
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      font-size: 1.05rem;
+      background: #0b1120;
+      color: var(--text);
+      border: 2px solid var(--border);
+      border-radius: 8px;
+    }
+    input[type="text"]:focus, button:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+    }
+    input[type="text"]:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .error-msg {
+      color: var(--danger);
+      font-size: 0.85rem;
+      margin-top: 0.4rem;
+      min-height: 1.25rem;
+      font-weight: 600;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    button {
+      padding: 0.85rem 1rem;
+      font-size: 1rem;
+      font-weight: 700;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.15s, opacity 0.15s;
+    }
+    #startPauseBtn {
+      background: var(--primary);
+      color: #0f172a;
+    }
+    #startPauseBtn:hover {
+      background: var(--primary-hover);
+      color: var(--text);
+    }
+    #resetBtn {
+      background: #334155;
+      color: var(--text);
+    }
+    #resetBtn:hover {
+      background: #475569;
+    }
+
+    .audio-banner {
+      margin-top: 1rem;
+      padding: 0.85rem;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      background: #0b1120;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .audio-banner.warn {
+      border-color: var(--warning);
+      color: #fde68a;
+    }
+    .audio-banner button.link-btn {
+      background: transparent;
+      color: var(--primary);
+      padding: 0;
+      font-size: 0.82rem;
+      text-decoration: underline;
+      display: inline;
+      font-weight: 600;
+    }
+    details {
+      margin-top: 0.6rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    summary {
+      cursor: pointer;
+      color: var(--primary);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <main aria-labelledby="appTitle">
+    <h1 id="appTitle">Pomodoro Timer</h1>
+    <div id="statusBadge" class="status-badge" data-state="idle" role="status" aria-live="polite">
+      State: Ready
+    </div>
+
+    <div
+      id="timerDisplay"
+      class="timer-display"
+      role="timer"
+      aria-live="off"
+      aria-atomic="true"
+      aria-label="Countdown Timer Display"
+    >
+      25:00
+    </div>
+
+    <div class="input-group">
+      <label for="minutesInput">Timer Duration (Minutes, 1–999)</label>
+      <input
+        id="minutesInput"
+        type="text"
+        inputmode="numeric"
+        value="25"
+        aria-describedby="inputError"
+        aria-label="Timer duration in minutes"
+      />
+      <div id="inputError" class="error-msg" role="alert" aria-live="assertive"></div>
+    </div>
+
+    <div class="controls">
+      <button id="startPauseBtn" type="button" aria-label="Start or pause timer">Start</button>
+      <button id="resetBtn" type="button" aria-label="Reset timer to configured minutes">Reset</button>
+    </div>
+
+    <div id="audioBanner" class="audio-banner" role="region" aria-label="Audio status and permissions">
+      <span id="audioStatusText">🔊 Background Audio Ready (Unlocks on Start).</span>
+      <button id="testSoundBtn" type="button" class="link-btn" aria-label="Test notification chime">
+        Test Chime
+      </button>
+      <details id="permissionHelp">
+        <summary>Chrome Background Sound & Permission Help</summary>
+        <p style="margin-top:0.4rem;">
+          1. Click the <strong>Tune / Lock icon</strong> on the left side of Chrome's address bar.<br />
+          2. Set <strong>Sound</strong> to <strong>Allow</strong> (instead of Automatic or Mute).<br />
+          3. Keep at least one user interaction (clicking Start) on this page so Chrome's Autoplay Policy permits background audio playback.
+        </p>
+      </details>
+    </div>
+  </main>
+
+  <script>
+    (function () {
+      const minutesInput = document.getElementById('minutesInput');
+      const timerDisplay = document.getElementById('timerDisplay');
+      const startPauseBtn = document.getElementById('startPauseBtn');
+      const resetBtn = document.getElementById('resetBtn');
+      const inputError = document.getElementById('inputError');
+      const statusBadge = document.getElementById('statusBadge');
+      const audioBanner = document.getElementById('audioBanner');
+      const audioStatusText = document.getElementById('audioStatusText');
+      const permissionHelp = document.getElementById('permissionHelp');
+      const testSoundBtn = document.getElementById('testSoundBtn');
+
+      let configuredMinutes = 25;
+      let remainingMs = configuredMinutes * 60 * 1000;
+      let targetEndTime = null;
+      let isRunning = false;
+      let isPaused = false;
+      let audioCtx = null;
+      let keepAliveNode = null;
+      let chimeAudioEl = null;
+
+      // 1. Generate an embedded WAV file (two-tone pleasant chime) in memory so HTML5 <audio> works offline
+      function createChimeWavDataUri() {
+        const sampleRate = 22050;
+        const durationSec = 1.2;
+        const numSamples = Math.floor(sampleRate * durationSec);
+        const buffer = new ArrayBuffer(44 + numSamples * 2);
+        const view = new DataView(buffer);
+
+        function writeString(offset, str) {
+          for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+        }
+
+        writeString(0, 'RIFF');
+        view.setUint32(4, 36 + numSamples * 2, true);
+        writeString(8, 'WAVE');
+        writeString(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeString(36, 'data');
+        view.setUint32(40, numSamples * 2, true);
+
+        for (let i = 0; i < numSamples; i++) {
+          const t = i / sampleRate;
+          const freq = t < 0.35 ? 659.25 : t < 0.7 ? 783.99 : 1046.5; // E5 -> G5 -> C6
+          const localT = t % 0.35;
+          const envelope = Math.exp(-4.5 * localT);
+          const sample = Math.sin(2 * Math.PI * freq * t) * envelope * 0.6;
+          const pcm = Math.max(-1, Math.min(1, sample));
+          view.setInt16(44 + i * 2, pcm * 32767, true);
+        }
+
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+        return 'data:audio/wav;base64,' + btoa(binary);
+      }
+
+      const wavUri = createChimeWavDataUri();
+      chimeAudioEl = new Audio(wavUri);
+      chimeAudioEl.preload = 'auto';
+
+      // 2. Web Worker for unthrottled background tab ticking in Chrome
+      function createTimerWorker() {
+        const workerCode = `
+          let intervalId = null;
+          self.onmessage = function(e) {
+            if (e.data === 'start') {
+              if (intervalId) clearInterval(intervalId);
+              intervalId = setInterval(() => self.postMessage('tick'), 200);
+            } else if (e.data === 'stop') {
+              if (intervalId) clearInterval(intervalId);
+              intervalId = null;
+            }
+          };
+        `;
+        const blob = new Blob([workerCode], { type: 'application/javascript' });
+        return new Worker(URL.createObjectURL(blob));
+      }
+
+      let worker = null;
+      try {
+        worker = createTimerWorker();
+        worker.onmessage = () => onTick();
+      } catch (_) {
+        // Fallback if Blob Worker is restricted
+      }
+      let fallbackInterval = null;
+
+      // 3. Unlock AudioContext and maintain an imperceptible keep-alive stream so Chrome does not suspend background audio
+      async function unlockAndWarmAudio() {
+        try {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (!audioCtx && AudioContextClass) {
+            audioCtx = new AudioContextClass();
+          }
+          if (audioCtx && audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+          }
+          if (audioCtx && !keepAliveNode) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            gain.gain.value = 0.00001; // Imperceptible keep-alive prevents Chrome background AudioContext suspension
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            keepAliveNode = osc;
+          }
+          // Prime HTML5 Audio element during user gesture
+          chimeAudioEl.muted = true;
+          const playPromise = chimeAudioEl.play();
+          if (playPromise !== undefined) {
+            await playPromise;
+            chimeAudioEl.pause();
+            chimeAudioEl.currentTime = 0;
+          }
+          chimeAudioEl.muted = false;
+
+          audioBanner.classList.remove('warn');
+          audioStatusText.textContent = '🔊 Background Audio Active & Unlocked for Chrome.';
+          return true;
+        } catch (err) {
+          chimeAudioEl.muted = false;
+          audioBanner.classList.add('warn');
+          audioStatusText.textContent =
+            '⚠️ Browser blocked audio autoplay. Enable Sound in Chrome site settings (see help below). ';
+          permissionHelp.open = true;
+          return false;
+        }
+      }
+
+      async function playNotificationChime() {
+        let played = false;
+
+        // Primary: HTML5 Audio Element (works reliably across background tabs once unlocked)
+        try {
+          chimeAudioEl.currentTime = 0;
+          chimeAudioEl.muted = false;
+          await chimeAudioEl.play();
+          played = true;
+        } catch (_) {}
+
+        // Secondary: Web Audio API Oscillator Chime
+        try {
+          if (audioCtx) {
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            const now = audioCtx.currentTime;
+            [659.25, 783.99, 1046.5].forEach((freq, idx) => {
+              const osc = audioCtx.createOscillator();
+              const gain = audioCtx.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(freq, now + idx * 0.28);
+              gain.gain.setValueAtTime(0.25, now + idx * 0.28);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.28 + 0.35);
+              osc.connect(gain);
+              gain.connect(audioCtx.destination);
+              osc.start(now + idx * 0.28);
+              osc.stop(now + idx * 0.28 + 0.36);
+            });
+            played = true;
+          }
+        } catch (_) {}
+
+        if (!played) {
+          audioBanner.classList.add('warn');
+          audioStatusText.textContent =
+            '⚠️ Sound blocked by Chrome permissions! Timer completed visually. ';
+          permissionHelp.open = true;
+        }
+      }
+
+      function formatTime(ms) {
+        const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+      }
+
+      function updateDisplay(ms) {
+        const formatted = formatTime(ms);
+        timerDisplay.textContent = formatted;
+        document.title = isRunning ? `(${formatted}) Pomodoro Timer` : 'Pomodoro Timer';
+      }
+
+      function setStatus(state, label) {
+        statusBadge.setAttribute('data-state', state);
+        statusBadge.textContent = 'State: ' + label;
+      }
+
+      function validateMinutesInput() {
+        const raw = minutesInput.value.trim();
+        if (!raw) {
+          inputError.textContent = 'Please enter a duration in minutes (1–999).';
+          return null;
+        }
+        if (!/^\d+$/.test(raw)) {
+          inputError.textContent = 'Invalid input: enter whole positive numbers only (no decimals or negatives).';
+          return null;
+        }
+        const num = parseInt(raw, 10);
+        if (num < 1 || num > 999) {
+          inputError.textContent = 'Minutes must be between 1 and 999.';
+          return null;
+        }
+        inputError.textContent = '';
+        return num;
+      }
+
+      function stopTicker() {
+        if (worker) worker.postMessage('stop');
+        if (fallbackInterval) {
+          clearInterval(fallbackInterval);
+          fallbackInterval = null;
+        }
+      }
+
+      function startTicker() {
+        if (worker) worker.postMessage('start');
+        fallbackInterval = setInterval(onTick, 250);
+      }
+
+      function onTick() {
+        if (!isRunning || !targetEndTime) return;
+        const now = Date.now();
+        remainingMs = targetEndTime - now;
+
+        if (remainingMs <= 0) {
+          // Timer reached 00:00 -> Stop, play notification sound, reset display back to original configured time
+          isRunning = false;
+          isPaused = false;
+          targetEndTime = null;
+          stopTicker();
+
+          timerDisplay.textContent = '00:00';
+          timerDisplay.classList.add('completed-flash');
+          setStatus('completed', 'Completed! Playing Chime…');
+          startPauseBtn.textContent = 'Start';
+          minutesInput.disabled = false;
+
+          playNotificationChime();
+
+          // Reset display back to original configured time after brief 00:00 visual confirmation
+          setTimeout(() => {
+            if (!isRunning) {
+              remainingMs = configuredMinutes * 60 * 1000;
+              updateDisplay(remainingMs);
+              setTimeout(() => timerDisplay.classList.remove('completed-flash'), 1200);
+            }
+          }, 900);
+          return;
+        }
+
+        updateDisplay(remainingMs);
+      }
+
+      async function handleStartPause() {
+        if (!isRunning) {
+          if (!isPaused) {
+            const validMins = validateMinutesInput();
+            if (validMins === null) return;
+            configuredMinutes = validMins;
+            remainingMs = configuredMinutes * 60 * 1000;
+          }
+          await unlockAndWarmAudio();
+          timerDisplay.classList.remove('completed-flash');
+          targetEndTime = Date.now() + remainingMs;
+          isRunning = true;
+          isPaused = false;
+          minutesInput.disabled = true;
+          startPauseBtn.textContent = 'Pause';
+          setStatus('running', 'Running');
+          updateDisplay(remainingMs);
+          startTicker();
+        } else {
+          // Pause
+          remainingMs = Math.max(0, targetEndTime - Date.now());
+          isRunning = false;
+          isPaused = true;
+          targetEndTime = null;
+          stopTicker();
+          startPauseBtn.textContent = 'Start';
+          setStatus('paused', 'Paused');
+          updateDisplay(remainingMs);
+        }
+      }
+
+      function handleReset() {
+        stopTicker();
+        isRunning = false;
+        isPaused = false;
+        targetEndTime = null;
+        minutesInput.disabled = false;
+        timerDisplay.classList.remove('completed-flash');
+        const validMins = validateMinutesInput();
+        if (validMins !== null) {
+          configuredMinutes = validMins;
+        }
+        remainingMs = configuredMinutes * 60 * 1000;
+        startPauseBtn.textContent = 'Start';
+        setStatus('idle', 'Ready');
+        updateDisplay(remainingMs);
+      }
+
+      startPauseBtn.addEventListener('click', handleStartPause);
+      resetBtn.addEventListener('click', handleReset);
+      testSoundBtn.addEventListener('click', async () => {
+        await unlockAndWarmAudio();
+        await playNotificationChime();
+      });
+
+      minutesInput.addEventListener('input', () => {
+        if (!isRunning && !isPaused) {
+          const validMins = validateMinutesInput();
+          if (validMins !== null) {
+            configuredMinutes = validMins;
+            remainingMs = configuredMinutes * 60 * 1000;
+            updateDisplay(remainingMs);
+          }
+        }
+      });
+
+      // Spacebar shortcut when not typing in input
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' && document.activeElement !== minutesInput && document.activeElement.tagName !== 'BUTTON') {
+          e.preventDefault();
+          handleStartPause();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
