@@ -1,0 +1,7 @@
+{
+  "name": "oss-bounties-pomodoro",
+  "private": true,
+  "scripts": {
+    "test": "bun test"
+  }
+}

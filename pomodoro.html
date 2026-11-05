@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Pomodoro</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='none' stroke='%23ff4d2e' stroke-width='4'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      --bg: #12100e;
+      --card: #1c1815;
+      --card-edge: rgba(247, 241, 232, 0.14);
+      --ink: #f7f1e8;
+      --muted: #d4c8bb;
+      --faint: #cfc3b6;
+      --line: rgba(247, 241, 232, 0.16);
+      --tomato: #ff4d2e;
+      --tomato-deep: #c4321c;
+      --ink-on-tomato: #2a0c08;
+      --amber: #f0b429;
+      --ink-on-amber: #2a1c04;
+      --ok: #b7ebc9;
+      --danger: #ffd0c6;
+      --shadow: 0 30px 70px rgba(0, 0, 0, 0.38);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+    }
+
+    body {
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(900px 520px at 50% -10%, rgba(255, 77, 46, 0.16), transparent 55%),
+        radial-gradient(700px 480px at 100% 100%, rgba(240, 180, 41, 0.08), transparent 50%),
+        var(--bg);
+    }
+
+    body:focus {
+      outline: none;
+    }
+
+    .wrap {
+      min-height: 100vh;
+      display: flex;
+      padding: 32px 16px 48px;
+    }
+
+    main {
+      width: min(440px, 100%);
+      margin: auto;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 28%), var(--card);
+      border: 1px solid var(--card-edge);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      padding: 28px 28px 22px;
+    }
+
+    header {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .mark {
+      width: 42px;
+      height: 42px;
+      flex: none;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      font-weight: 650;
+      letter-spacing: -0.03em;
+    }
+
+    .lede {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.35;
+    }
+
+    .dial {
+      position: relative;
+      width: 280px;
+      height: 280px;
+      margin: 22px auto 8px;
+    }
+
+    .dial svg {
+      width: 100%;
+      height: 100%;
+      transform: rotate(-90deg);
+    }
+
+    .track, .value {
+      fill: none;
+      stroke-width: 10;
+      stroke-linecap: round;
+    }
+
+    .track { stroke: rgba(247, 241, 232, 0.1); }
+
+    .value {
+      stroke: var(--tomato);
+      stroke-dasharray: var(--ring);
+      stroke-dashoffset: 0;
+      transition: stroke 160ms linear, stroke-dashoffset 200ms linear;
+    }
+
+    main[data-phase="paused"] .value { stroke: var(--amber); }
+    main[data-phase="done"] .value { stroke: var(--tomato); }
+
+    .face {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      align-content: center;
+      text-align: center;
+      padding-bottom: 6px;
+    }
+
+    #clock {
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      font-size: 5rem;
+      font-weight: 560;
+      letter-spacing: -0.04em;
+      font-variant-numeric: tabular-nums;
+      line-height: 0.9;
+    }
+
+    #phase-label {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    form { margin-top: 8px; }
+
+    .field {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+
+    label {
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+
+    input {
+      width: 7.5rem;
+      border: 1px solid var(--line);
+      background: #14110f;
+      color: var(--ink);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font: 600 1.15rem/1 "Avenir Next", "Segoe UI", sans-serif;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+
+    input:focus-visible,
+    button:focus-visible,
+    summary:focus-visible {
+      outline: 3px solid var(--ink);
+      outline-offset: 3px;
+    }
+
+    input:disabled {
+      opacity: 0.55;
+    }
+
+    input[aria-invalid="true"] {
+      border-color: #ff8d78;
+    }
+
+    #minutes-error {
+      min-height: 1.25rem;
+      margin: 0 0 10px;
+      color: var(--danger);
+      font-size: 0.92rem;
+    }
+
+    #toggle {
+      width: 100%;
+      border: 0;
+      border-radius: 999px;
+      padding: 14px 18px;
+      font: 700 1.05rem/1 "Avenir Next", "Segoe UI", sans-serif;
+      background: var(--tomato);
+      color: var(--ink-on-tomato);
+      cursor: pointer;
+    }
+
+    #toggle:hover { background: #ff6248; }
+
+    #toggle[data-mode="pause"] {
+      background: transparent;
+      color: var(--ink);
+      box-shadow: inset 0 0 0 2px var(--line);
+    }
+
+    #toggle[data-mode="resume"] {
+      background: var(--amber);
+      color: var(--ink-on-amber);
+    }
+
+    #live {
+      min-height: 1.4rem;
+      margin: 12px 0 0;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .chips {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      letter-spacing: 0.02em;
+      color: var(--muted);
+      background: rgba(247, 241, 232, 0.06);
+    }
+
+    .chip[data-tone="ok"] { color: var(--ok); }
+    .chip[data-tone="bad"] { color: var(--danger); }
+    .chip[data-tone="wait"] { color: #ffe1a8; }
+
+    .keys {
+      margin: 14px 0 0;
+      color: var(--faint);
+      font-size: 0.8rem;
+      text-align: center;
+      line-height: 1.45;
+    }
+
+    details {
+      margin-top: 14px;
+      border-top: 1px solid var(--line);
+      padding-top: 10px;
+    }
+
+    summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    #help {
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    #help p { margin: 10px 0; }
+
+    #help ol {
+      margin: 8px 0 0;
+      padding-left: 1.2rem;
+    }
+
+    #help li { margin: 4px 0; }
+
+    #help code {
+      font-family: ui-monospace, "Cascadia Code", monospace;
+      font-size: 0.82em;
+      color: var(--ink);
+    }
+
+    main[data-phase="done"] .dial {
+      animation: done-flash 900ms ease;
+    }
+
+    @keyframes done-flash {
+      0% { filter: none; }
+      35% { filter: drop-shadow(0 0 16px rgba(255, 77, 46, 0.85)); }
+      100% { filter: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .value, main[data-phase="done"] .dial {
+        transition: none;
+        animation: none;
+      }
+    }
+
+    @media (max-width: 380px) {
+      main { padding: 22px 16px 16px; }
+      #clock { font-size: 4.2rem; }
+      .dial { width: 240px; height: 240px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <main id="app" data-phase="idle">
+      <header>
+        <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
+          <path fill="#ff4d2e" d="M32 14c3.2-6 10-6.2 13-2.2-4 1.2-6.2 3.4-6.4 6 5.2-.2 10 2.6 12.2 7.2 3.6 8.2-1.2 20-13.6 23.2-14.2 3.6-24.2-6.6-22.8-18.2C15.6 21.2 22 16.2 28 16.6c-.2-2.4-1.6-4.6-4.8-6.2C26.2 8 30 9.2 32 14z"/>
+          <path fill="#2f7d45" d="M30 16c2-6 8-9 12-8-3 2-4 5-4 8-2.2-.4-5.2-.4-8 0z"/>
+        </svg>
+        <div>
+          <h1>Pomodoro</h1>
+          <p class="lede">One session. The chime still rings if this tab is in the background.</p>
+        </div>
+      </header>
+
+      <div class="dial">
+        <svg viewBox="0 0 280 280" aria-hidden="true">
+          <circle class="track" cx="140" cy="140" r="118"></circle>
+          <circle id="ring" class="value" cx="140" cy="140" r="118"></circle>
+        </svg>
+        <div class="face">
+          <div id="clock" role="timer" aria-live="off" aria-atomic="true">25:00</div>
+          <div id="phase-label">Ready</div>
+        </div>
+      </div>
+
+      <form id="timer-form">
+        <div class="field">
+          <label for="minutes">Minutes</label>
+          <input id="minutes" name="minutes" inputmode="numeric" autocomplete="off" spellcheck="false" value="25" aria-describedby="minutes-error minutes-hint">
+        </div>
+        <p id="minutes-error" role="alert"></p>
+        <button id="toggle" type="submit" aria-label="Start timer">Start</button>
+      </form>
+
+      <p id="live" role="status" aria-live="polite"></p>
+      <div class="chips" aria-hidden="true">
+        <span id="sound-chip" class="chip" data-tone="wait">Sound not checked yet</span>
+        <span id="alert-chip" class="chip">Alerts not requested</span>
+      </div>
+      <p id="minutes-hint" class="keys">Space starts and pauses. Escape cancels a session. Enter starts from the minutes field.</p>
+
+      <details id="notes">
+        <summary>Sound, permissions, and background tabs</summary>
+        <div id="help"></div>
+      </details>
+    </main>
+  </div>
+
+  <script id="pomodoro-core">
+    (function (root) {
+      "use strict";
+
+      function fail(code, message) {
+        return { ok: false, code: code, message: message };
+      }
+
+      function validateMinutes(raw) {
+        if (raw == null) return fail("empty", "Enter a number of minutes.");
+        var text = String(raw).trim();
+        if (text === "") return fail("empty", "Enter a number of minutes.");
+        if (text.charAt(0) === "-") return fail("negative", "Minutes can't be negative.");
+        if (text.indexOf(".") !== -1) return fail("decimal", "Use whole minutes only, with no decimal point.");
+        if (!/^\d+$/.test(text)) return fail("nan", "Enter a whole number of minutes.");
+        var minutes = Number(text);
+        if (!isFinite(minutes)) return fail("too-big", "Maximum is 999 minutes.");
+        if (minutes === 0) return fail("zero", "Set at least 1 minute.");
+        if (minutes > 999) return fail("too-big", "Maximum is 999 minutes.");
+        return { ok: true, code: "ok", minutes: minutes, message: "" };
+      }
+
+      function formatClock(ms) {
+        var safe = ms <= 0 ? 0 : Math.ceil(ms / 1000);
+        var minutes = Math.floor(safe / 60);
+        var seconds = safe % 60;
+        var minuteText = minutes < 10 ? "0" + minutes : String(minutes);
+        var secondText = seconds < 10 ? "0" + seconds : String(seconds);
+        return minuteText + ":" + secondText;
+      }
+
+      function spokenRemaining(ms) {
+        var safe = ms <= 0 ? 0 : Math.ceil(ms / 1000);
+        var minutes = Math.floor(safe / 60);
+        var seconds = safe % 60;
+        var minuteWord = minutes === 1 ? "minute" : "minutes";
+        var secondWord = seconds === 1 ? "second" : "seconds";
+        return minutes + " " + minuteWord + " " + seconds + " " + secondWord + " remaining";
+      }
+
+      function idleSession(durationMs) {
+        return {
+          phase: "idle",
+          durationMs: durationMs,
+          remainingMs: durationMs,
+          endsAt: null
+        };
+      }
+
+      function doneSession(durationMs) {
+        return {
+          phase: "done",
+          durationMs: durationMs,
+          remainingMs: durationMs,
+          endsAt: null
+        };
+      }
+
+      function reduce(session, action) {
+        if (action.type === "set-duration") {
+          if (session.phase === "running" || session.phase === "paused") return session;
+          return idleSession(action.durationMs);
+        }
+        if (action.type === "cancel") return idleSession(session.durationMs);
+        if (action.type === "start") {
+          if (session.phase === "running") return session;
+          var remainingMs = session.phase === "paused" ? session.remainingMs : session.durationMs;
+          if (remainingMs <= 0) return doneSession(session.durationMs);
+          return {
+            phase: "running",
+            durationMs: session.durationMs,
+            remainingMs: remainingMs,
+            endsAt: action.now + remainingMs
+          };
+        }
+        if (action.type === "pause") {
+          if (session.phase !== "running") return session;
+          var left = Math.max(0, session.endsAt - action.now);
+          return {
+            phase: "paused",
+            durationMs: session.durationMs,
+            remainingMs: left,
+            endsAt: null
+          };
+        }
+        if (action.type === "tick") {
+          if (session.phase !== "running") return session;
+          var tickLeft = Math.max(0, session.endsAt - action.now);
+          if (tickLeft <= 0) return doneSession(session.durationMs);
+          return {
+            phase: "running",
+            durationMs: session.durationMs,
+            remainingMs: tickLeft,
+            endsAt: session.endsAt
+          };
+        }
+        return session;
+      }
+
+      function audioDelaySeconds(remainingMs) {
+        return Math.max(0, remainingMs / 1000);
+      }
+
+      function progress(session) {
+        if (!session.durationMs) return 0;
+        return Math.max(0, Math.min(1, session.remainingMs / session.durationMs));
+      }
+
+      function guidance(state) {
+        var steps = [];
+        if (state.audio === "blocked") {
+          steps.push("Select the lock or tune icon at the left of the address bar.");
+          steps.push("Open Site settings and set Sound to Allow.");
+          steps.push("If this site is listed under muted sites, remove it at chrome://settings/content/sound.");
+          steps.push("Come back to this tab and press Start or Resume. The countdown keeps running even when the chime cannot play.");
+        }
+        if (state.audio === "unsupported") {
+          steps.push("This browser has no Web Audio support. The countdown still runs, and the page shows Time's up when it ends.");
+        }
+        if (state.notifications === "denied") {
+          steps.push("Notifications are blocked. Open Site settings and set Notifications to Allow, or visit chrome://settings/content/notifications.");
+          steps.push("The on-page clock and the chime do not need notification permission.");
+        }
+        if (state.notifications === "default") {
+          steps.push("Allow notifications if you want a banner when the timer ends while you are in another tab. The chime does not depend on that choice.");
+        }
+        if (state.notifications === "granted") {
+          steps.push("A silent desktop notification is also shown when the session ends, including from a background tab, once Chrome runs this page's finish step. Turn off Focus or Do Not Disturb if banners are hidden.");
+        }
+        return {
+          showAudioHelp: state.audio === "blocked" || state.audio === "unsupported",
+          steps: steps
+        };
+      }
+
+      root.PomodoroCore = {
+        validateMinutes: validateMinutes,
+        formatClock: formatClock,
+        spokenRemaining: spokenRemaining,
+        idleSession: idleSession,
+        reduce: reduce,
+        audioDelaySeconds: audioDelaySeconds,
+        progress: progress,
+        guidance: guidance
+      };
+    })(globalThis);
+  </script>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var core = globalThis.PomodoroCore;
+      var RING = 2 * Math.PI * 118;
+      var minutesInput = document.getElementById("minutes");
+      var errorEl = document.getElementById("minutes-error");
+      var toggleBtn = document.getElementById("toggle");
+      var form = document.getElementById("timer-form");
+      var clockEl = document.getElementById("clock");
+      var phaseLabel = document.getElementById("phase-label");
+      var liveEl = document.getElementById("live");
+      var ringEl = document.getElementById("ring");
+      var appEl = document.getElementById("app");
+      var helpEl = document.getElementById("help");
+      var notesEl = document.getElementById("notes");
+      var soundChip = document.getElementById("sound-chip");
+      var alertChip = document.getElementById("alert-chip");
+      var iconLink = document.querySelector("link[rel='icon']");
+
+      var session = core.idleSession(25 * 60 * 1000);
+      var armedMs = session.durationMs;
+      var audio = {
+        ctx: null,
+        keepAlive: null,
+        nodes: [],
+        generation: 0,
+        status: "unknown"
+      };
+      var notifications = notificationState();
+      var ticker = { raf: 0, timer: 0 };
+      var finishedFlag = false;
+      var chimeArmed = false;
+      var armToken = 0;
+      var lastLive = "";
+
+      ringEl.style.strokeDasharray = String(RING);
+
+      function notificationState() {
+        if (typeof Notification === "undefined") return "unsupported";
+        return Notification.permission;
+      }
+
+      function setChip(el, text, tone) {
+        el.textContent = text;
+        el.dataset.tone = tone;
+      }
+
+      function renderGuidance() {
+        var info = core.guidance({ audio: audio.status, notifications: notifications });
+        helpEl.replaceChildren();
+        var intro = document.createElement("p");
+        intro.textContent = "Press Start once so Chrome unlocks sound. The chime is placed on the audio clock for the moment the session hits zero, so it can ring while this tab is in the background or minimized. The digits follow the system clock, so a hidden tab does not slow them down. A speaker icon on the tab means the chime is armed.";
+        helpEl.appendChild(intro);
+        if (info.steps.length) {
+          var list = document.createElement("ol");
+          info.steps.forEach(function (step) {
+            var item = document.createElement("li");
+            item.textContent = step;
+            list.appendChild(item);
+          });
+          helpEl.appendChild(list);
+        }
+        if (info.showAudioHelp) notesEl.open = true;
+      }
+
+      function renderChips() {
+        if (audio.status === "ready") setChip(soundChip, "Sound on", "ok");
+        else if (audio.status === "blocked") setChip(soundChip, "Sound blocked", "bad");
+        else if (audio.status === "unsupported") setChip(soundChip, "Sound unavailable", "bad");
+        else setChip(soundChip, "Sound not checked yet", "wait");
+
+        if (notifications === "granted") setChip(alertChip, "Alerts on", "ok");
+        else if (notifications === "denied") setChip(alertChip, "Alerts blocked", "bad");
+        else if (notifications === "unsupported") setChip(alertChip, "Alerts unavailable", "bad");
+        else setChip(alertChip, "Alerts not requested", "wait");
+      }
+
+      function paintIcon(fraction) {
+        var canvas = document.createElement("canvas");
+        canvas.width = 32;
+        canvas.height = 32;
+        var pen = canvas.getContext("2d");
+        pen.clearRect(0, 0, 32, 32);
+        pen.beginPath();
+        pen.arc(16, 16, 11, 0, Math.PI * 2);
+        pen.strokeStyle = "#3a322c";
+        pen.lineWidth = 4;
+        pen.stroke();
+        pen.beginPath();
+        pen.strokeStyle = session.phase === "paused" ? "#f0b429" : "#ff4d2e";
+        pen.lineWidth = 4;
+        pen.lineCap = "round";
+        pen.arc(16, 16, 11, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * fraction);
+        pen.stroke();
+        iconLink.href = canvas.toDataURL("image/png");
+      }
+
+      function phaseCopy() {
+        if (session.phase === "running") return "Running";
+        if (session.phase === "paused") return "Paused";
+        if (session.phase === "done") return "Time's up";
+        return "Ready";
+      }
+
+      function liveCopy() {
+        var clock = core.formatClock(session.remainingMs);
+        if (session.phase === "running" && session.endsAt) {
+          var ends = new Date(session.endsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+          return "Running. Ends at " + ends + ".";
+        }
+        if (session.phase === "paused") return "Paused. " + clock + " left.";
+        if (session.phase === "done") return "Time's up. The display reset to " + clock + ".";
+        return "Ready. Set the minutes, then press Start.";
+      }
+
+      function render() {
+        var clock = core.formatClock(session.remainingMs);
+        clockEl.textContent = clock;
+        clockEl.setAttribute("aria-label", core.spokenRemaining(session.remainingMs));
+        phaseLabel.textContent = phaseCopy();
+        appEl.dataset.phase = session.phase;
+        var fraction = core.progress(session);
+        ringEl.style.strokeDashoffset = String(RING * (1 - fraction));
+        var locked = session.phase === "running" || session.phase === "paused";
+        minutesInput.disabled = locked;
+        if (session.phase === "running") {
+          toggleBtn.textContent = "Pause";
+          toggleBtn.dataset.mode = "pause";
+          toggleBtn.setAttribute("aria-label", "Pause timer");
+          toggleBtn.setAttribute("aria-pressed", "true");
+        } else if (session.phase === "paused") {
+          toggleBtn.textContent = "Resume";
+          toggleBtn.dataset.mode = "resume";
+          toggleBtn.setAttribute("aria-label", "Resume timer");
+          toggleBtn.setAttribute("aria-pressed", "false");
+        } else {
+          toggleBtn.textContent = "Start";
+          toggleBtn.dataset.mode = "start";
+          toggleBtn.setAttribute("aria-label", "Start timer");
+          toggleBtn.setAttribute("aria-pressed", "false");
+        }
+        var message = liveCopy();
+        if (message !== lastLive) {
+          liveEl.textContent = message;
+          lastLive = message;
+        }
+        if (session.phase === "done") document.title = "Time's up · Pomodoro";
+        else if (session.phase === "running" || session.phase === "paused") document.title = clock + " · Pomodoro";
+        else document.title = "Pomodoro";
+        paintIcon(session.phase === "done" ? 1 : fraction);
+        renderChips();
+      }
+
+      function showError(message) {
+        errorEl.textContent = message || "";
+        minutesInput.setAttribute("aria-invalid", message ? "true" : "false");
+      }
+
+      function paintArmed(ms) {
+        var phase = session.phase === "done" ? "done" : "idle";
+        session = { phase: phase, durationMs: ms, remainingMs: ms, endsAt: null };
+        render();
+      }
+
+      function applyTypedMinutes(commit) {
+        var result = core.validateMinutes(minutesInput.value);
+        if (session.phase === "running" || session.phase === "paused") return result;
+        if (!result.ok) {
+          showError(result.message);
+          paintArmed(armedMs);
+          return result;
+        }
+        showError("");
+        var nextMs = result.minutes * 60 * 1000;
+        if (commit) armedMs = nextMs;
+        paintArmed(commit ? armedMs : nextMs);
+        return result;
+      }
+
+      function stopTicker() {
+        cancelAnimationFrame(ticker.raf);
+        clearTimeout(ticker.timer);
+        ticker.raf = 0;
+        ticker.timer = 0;
+      }
+
+      function stopKeepAlive() {
+        if (!audio.keepAlive) return;
+        try { audio.keepAlive.stop(); } catch (ignore) { /* already stopped */ }
+        audio.keepAlive = null;
+      }
+
+      function stopScheduled() {
+        audio.generation += 1;
+        audio.nodes.forEach(function (node) {
+          try { node.stop(); } catch (ignore) { /* not started */ }
+        });
+        audio.nodes = [];
+      }
+
+      function ensureContext() {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) {
+          audio.status = "unsupported";
+          return null;
+        }
+        if (!audio.ctx) audio.ctx = new AC();
+        return audio.ctx;
+      }
+
+      function unlockAudio() {
+        var ctx = ensureContext();
+        if (!ctx) return Promise.resolve(false);
+        var pending = ctx.resume();
+        var buffer = ctx.createBuffer(1, 8, ctx.sampleRate);
+        var blip = ctx.createBufferSource();
+        blip.buffer = buffer;
+        blip.connect(ctx.destination);
+        try { blip.start(); } catch (ignore) { /* resume will report the real state */ }
+        return Promise.resolve(pending).then(function () {
+          return new Promise(function (resolve) {
+            window.setTimeout(function () { resolve(ctx.state === "running"); }, 40);
+          });
+        }).then(function (running) {
+          audio.status = running ? "ready" : "blocked";
+          return running;
+        }).catch(function () {
+          audio.status = "blocked";
+          return false;
+        });
+      }
+
+      function armKeepAlive(ctx) {
+        stopKeepAlive();
+        var carrier = ctx.createOscillator();
+        var gain = ctx.createGain();
+        carrier.frequency.value = 19000;
+        gain.gain.value = 0.0008;
+        carrier.connect(gain);
+        gain.connect(ctx.destination);
+        carrier.start();
+        audio.keepAlive = carrier;
+      }
+
+      function scheduleChime(ctx, delaySeconds) {
+        stopScheduled();
+        var generation = audio.generation;
+        var when = ctx.currentTime + delaySeconds;
+        var notes = [
+          { freq: 523.25, at: 0 },
+          { freq: 659.25, at: 0.16 },
+          { freq: 783.99, at: 0.32 }
+        ];
+        notes.forEach(function (note) {
+          var osc = ctx.createOscillator();
+          var gain = ctx.createGain();
+          var startAt = when + note.at;
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(note.freq, startAt);
+          gain.gain.setValueAtTime(0.0001, startAt);
+          gain.gain.exponentialRampToValueAtTime(0.22, startAt + 0.025);
+          gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 1.35);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(startAt);
+          osc.stop(startAt + 1.45);
+          audio.nodes.push(osc);
+        });
+        var markerBuffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+        var marker = ctx.createBufferSource();
+        marker.buffer = markerBuffer;
+        marker.connect(ctx.destination);
+        marker.start(when);
+        marker.onended = function () {
+          if (generation !== audio.generation) return;
+          finishFromAudio();
+        };
+        audio.nodes.push(marker);
+      }
+
+      function playCatchUpChime() {
+        var ctx = audio.ctx;
+        if (!ctx || ctx.state !== "running" || chimeArmed) return;
+        scheduleChime(ctx, 0.03);
+        chimeArmed = true;
+      }
+
+      function notifyDone() {
+        if (notifications !== "granted" || typeof Notification === "undefined") return;
+        try {
+          var notice = new Notification("Time's up", {
+            body: "The pomodoro finished and the clock reset to the minutes you set.",
+            tag: "pomodoro-done",
+            renotify: true,
+            silent: audio.status === "ready",
+            requireInteraction: true
+          });
+          notice.onclick = function () {
+            window.focus();
+            notice.close();
+          };
+        } catch (ignore) {
+          /* A blocked notification constructor must not stop the timer. */
+        }
+      }
+
+      function finishFromAudio() {
+        if (session.phase !== "running") return;
+        session = core.reduce(session, { type: "tick", now: session.endsAt });
+        onFinished();
+      }
+
+      function onFinished() {
+        if (finishedFlag) return;
+        finishedFlag = true;
+        stopTicker();
+        stopKeepAlive();
+        render();
+        if (audio.status !== "ready") {
+          liveEl.textContent = "Time's up. Sound did not play, so use the red flash and this message. Instructions are open below.";
+          lastLive = liveEl.textContent;
+        }
+        renderGuidance();
+        notifyDone();
+        playCatchUpChime();
+      }
+
+      function tickNow() {
+        if (session.phase !== "running") return;
+        var next = core.reduce(session, { type: "tick", now: Date.now() });
+        var finished = next.phase === "done";
+        session = next;
+        render();
+        if (finished) onFinished();
+      }
+
+      function armTicker() {
+        stopTicker();
+        var frame = function () {
+          tickNow();
+          if (session.phase === "running") ticker.raf = requestAnimationFrame(frame);
+        };
+        ticker.raf = requestAnimationFrame(frame);
+        var backup = function () {
+          tickNow();
+          if (session.phase !== "running") return;
+          var wait = document.hidden ? 1000 : 250;
+          ticker.timer = window.setTimeout(backup, wait);
+        };
+        ticker.timer = window.setTimeout(backup, 250);
+      }
+
+      function watchNotificationPermission() {
+        if (!navigator.permissions || !navigator.permissions.query) return;
+        navigator.permissions.query({ name: "notifications" }).then(function (status) {
+          var apply = function () {
+            notifications = status.state === "prompt" ? "default" : status.state;
+            renderChips();
+            renderGuidance();
+          };
+          apply();
+          status.onchange = apply;
+        }).catch(function () {
+          /* Chrome can reject the query; Notification.permission still works. */
+        });
+      }
+
+      function requestNotifications() {
+        if (typeof Notification === "undefined") {
+          notifications = "unsupported";
+          return;
+        }
+        if (Notification.permission !== "default") {
+          notifications = Notification.permission;
+          return;
+        }
+        Notification.requestPermission().then(function (result) {
+          notifications = result;
+          renderChips();
+          renderGuidance();
+        }).catch(function () {
+          notifications = notificationState();
+          renderChips();
+        });
+      }
+
+      function beginRun(soundReady) {
+        finishedFlag = false;
+        chimeArmed = false;
+        var now = Date.now();
+        session = core.reduce(session, { type: "start", now: now });
+        if (soundReady && audio.ctx && audio.ctx.state === "running") {
+          armKeepAlive(audio.ctx);
+          scheduleChime(audio.ctx, core.audioDelaySeconds(session.remainingMs));
+          chimeArmed = true;
+          audio.status = "ready";
+        }
+        armTicker();
+        render();
+        if (!soundReady) {
+          liveEl.textContent = liveCopy() + " Sound is blocked, so the chime may not play. Instructions are open below.";
+          lastLive = liveEl.textContent;
+        }
+        renderGuidance();
+        requestNotifications();
+      }
+
+      function pauseRun() {
+        armToken += 1;
+        stopScheduled();
+        chimeArmed = false;
+        stopKeepAlive();
+        session = core.reduce(session, { type: "pause", now: Date.now() });
+        stopTicker();
+        finishedFlag = false;
+        render();
+      }
+
+      function cancelRun() {
+        armToken += 1;
+        stopScheduled();
+        chimeArmed = false;
+        stopKeepAlive();
+        stopTicker();
+        finishedFlag = false;
+        session = core.reduce(session, { type: "cancel" });
+        render();
+        minutesInput.focus();
+      }
+
+      function onToggle(event) {
+        if (event) event.preventDefault();
+        if (session.phase === "running") {
+          pauseRun();
+          return;
+        }
+        var typed = applyTypedMinutes(true);
+        if (!typed.ok) {
+          minutesInput.focus();
+          return;
+        }
+        var token = ++armToken;
+        unlockAudio().then(function (ready) {
+          if (token !== armToken) return;
+          if (session.phase === "running") return;
+          beginRun(ready);
+        });
+      }
+
+      form.addEventListener("submit", onToggle);
+      minutesInput.addEventListener("input", function () {
+        if (session.phase === "running" || session.phase === "paused") return;
+        applyTypedMinutes(false);
+      });
+      minutesInput.addEventListener("blur", function () {
+        if (session.phase === "running" || session.phase === "paused") return;
+        applyTypedMinutes(true);
+      });
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          if (session.phase === "running" || session.phase === "paused") {
+            event.preventDefault();
+            cancelRun();
+          }
+          return;
+        }
+        if (event.code !== "Space") return;
+        var target = event.target;
+        if (target && target.closest && target.closest("button, a, input, textarea, select, summary")) return;
+        event.preventDefault();
+        onToggle();
+      });
+
+      document.addEventListener("visibilitychange", function () {
+        if (session.phase === "running") tickNow();
+        if (audio.ctx && audio.ctx.state === "suspended" && session.phase === "running") {
+          audio.ctx.resume().then(function () {
+            audio.status = audio.ctx.state === "running" ? "ready" : "blocked";
+            renderChips();
+            renderGuidance();
+          }).catch(function () {
+            audio.status = "blocked";
+            renderChips();
+            renderGuidance();
+          });
+        }
+      });
+
+      if (window.AudioContext || window.webkitAudioContext) {
+        /* Context is created on the Start gesture. Status stays unknown until then. */
+      } else {
+        audio.status = "unsupported";
+      }
+
+      watchNotificationPermission();
+      applyTypedMinutes(true);
+      renderGuidance();
+      render();
+    })();
+  </script>
+</body>
+</html>
