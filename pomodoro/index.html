@@ -1,0 +1,939 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pomodoro</title>
+<!--
+  Single file, zero dependencies: no fonts, no CDNs, no service worker, no network requests.
+  Everything this page needs (CSS, JS, chime, icon) is inlined, so it also works from file://.
+-->
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --field: #ffffff;
+    --btn: #eff0f4;
+    --text: #14171f;
+    --muted: #4a5262;
+    --line: #d7dae2;
+    --accent: #1b5fd9;
+    --accent-text: #ffffff;
+    --focus: #1b5fd9;
+    --ok: #0f6d3f;
+    --err: #b3261e;
+    --warn-bg: #fff6e5;
+    --warn-line: #b7791f;
+    --warn-text: #6b4a00;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1116;
+      --card: #171a21;
+      --field: #101319;
+      --btn: #20242e;
+      --text: #eef1f6;
+      --muted: #a7b0c0;
+      --line: #2b303b;
+      --accent: #5b8cff;
+      --accent-text: #06101f;
+      --focus: #8fb0ff;
+      --ok: #5ed69b;
+      --err: #ff9d94;
+      --warn-bg: #2a2113;
+      --warn-text: #f0d9a8;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    min-height: 100vh;
+    margin: 0;
+    display: grid;
+    place-items: center;
+    padding: 1.5rem;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .card {
+    width: min(26rem, 100%);
+    padding: 1.5rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgb(0 0 0 / 8%);
+  }
+
+  h1 {
+    margin: 0 0 1rem;
+    font-size: 1rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  label { display: block; font-size: .85rem; font-weight: 600; color: var(--muted); }
+
+  .setup-row { display: flex; gap: .5rem; margin-top: .35rem; }
+
+  input[type="number"] {
+    flex: 1;
+    min-width: 0;
+    padding: .6rem .7rem;
+    font: inherit;
+    color: inherit;
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+
+  input[aria-invalid="true"] { border-color: var(--err); }
+
+  button {
+    padding: .6rem 1rem;
+    font: inherit;
+    color: inherit;
+    background: var(--btn);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    cursor: pointer;
+  }
+
+  button.primary {
+    font-weight: 600;
+    color: var(--accent-text);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+  .display {
+    margin: 1.25rem 0 .5rem;
+    text-align: center;
+    font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(2.75rem, 12vw, 3.75rem);
+    line-height: 1.1;
+    letter-spacing: .02em;
+  }
+
+  body[data-phase="running"] .display { color: var(--accent); }
+  body[data-phase="paused"] .display { color: var(--warn-text); }
+  body[data-phase="completed"] .display { color: var(--ok); }
+
+  .track { height: 6px; background: var(--line); border-radius: 999px; overflow: hidden; }
+
+  .track > span {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: var(--accent);
+    transform-origin: left center;
+    transition: transform .2s linear;
+  }
+
+  .status { min-height: 3em; margin: .85rem 0 0; color: var(--muted); }
+
+  body[data-phase="completed"] .status { color: var(--ok); font-weight: 600; }
+  body[data-phase="completed"] .card { border-color: var(--ok); animation: flash 1.2s ease-out 2; }
+
+  @keyframes flash {
+    from { box-shadow: 0 0 0 0 var(--ok); }
+    to { box-shadow: 0 0 0 14px transparent; }
+  }
+
+  .controls { display: flex; gap: .5rem; margin-top: .9rem; }
+  .controls button { flex: 1; }
+
+  .notice {
+    margin: .9rem 0 0;
+    padding: .6rem .75rem;
+    font-size: .88rem;
+    border: 1px solid var(--warn-line);
+    border-radius: 10px;
+    background: var(--warn-bg);
+    color: var(--warn-text);
+  }
+
+  .notice[data-kind="error"] { border-color: var(--err); }
+
+  .error { margin: .45rem 0 0; font-size: .88rem; font-weight: 600; color: var(--err); }
+  .hint { margin: .45rem 0 0; font-size: .8rem; color: var(--muted); }
+
+  details { margin-top: 1.1rem; font-size: .85rem; color: var(--muted); }
+  details ul { margin: .5rem 0 0; padding-left: 1.1rem; }
+  details li + li { margin-top: .35rem; }
+  summary { cursor: pointer; }
+  kbd { padding: 0 .25rem; font: inherit; border: 1px solid var(--line); border-radius: 4px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .track > span { transition: none; }
+    body[data-phase="completed"] .card { animation: none; }
+  }
+</style>
+</head>
+<body data-phase="idle">
+<main class="card">
+  <h1>Pomodoro</h1>
+
+  <form id="setup" novalidate>
+    <label for="minutes">Minutes</label>
+    <div class="setup-row">
+      <input id="minutes" type="number" inputmode="decimal" min="0.02" max="999" step="any" value="25"
+             aria-describedby="hint input-error">
+      <button id="start" class="primary" type="button">Start</button>
+    </div>
+    <p id="hint" class="hint">1 second to 999 minutes. Use decimals for short runs: 0.5 is 30 seconds.</p>
+    <p id="input-error" class="error" role="alert" hidden></p>
+  </form>
+
+  <p id="display" class="display" role="timer" aria-label="Time remaining" aria-live="off">25:00</p>
+  <div class="track" aria-hidden="true"><span id="progress"></span></div>
+  <p id="status" class="status" role="status">Ready. Press Start.</p>
+
+  <div class="controls">
+    <button id="reset" type="button" disabled>Reset</button>
+    <button id="test" type="button">Test chime</button>
+  </div>
+
+  <p id="audio-notice" class="notice" hidden></p>
+  <p id="permission-notice" class="notice" hidden></p>
+
+  <details>
+    <summary>Shortcuts, and what to do when sound or notifications are blocked</summary>
+    <ul>
+      <li><kbd>Space</kbd> starts or pauses while the page has focus, <kbd>R</kbd> resets. When a button has
+        focus, Space activates that button, as usual.</li>
+      <li><b>No sound?</b> Chrome refuses to play any audio until the page has been clicked, so press
+        <b>Test chime</b> once. If it stays silent, open the padlock in the address bar &rarr; Site settings &rarr;
+        <b>Sound &rarr; Allow</b>, make sure the tab is not muted, and check the system volume.</li>
+      <li><b>No notification?</b> Allow them when Chrome asks, or set Notifications to Allow in the same Site
+        settings panel. Without notifications the tab title counts down and switches to <b>Time is up!</b>, so the
+        end of a run is visible from another tab in the same window.</li>
+      <li><b>Countdown caught up when you came back?</b> Chrome throttles JavaScript timers in hidden tabs to once
+        a second, and to once a minute after five minutes hidden, so the on-screen refresh can lag. The countdown
+        is recalculated from the clock on every tick and the chime is armed once, in advance, on the audio clock,
+        so the time shown is exact the moment you look at it and the sound still rings on time.</li>
+    </ul>
+  </details>
+</main>
+
+<script type="module">
+/*<core-logic>*/
+// Timer, chime, keep-alive and message logic: no DOM access, no globals except
+// window.AudioContext, no element ids. tests/core-extract.js lifts this block out of the
+// shipped index.html and runs it directly, so the tests cover the real code, not a copy.
+// Everything below this block is the DOM wiring.
+
+const MIN_TOTAL_MS = 1000;
+const MAX_MINUTES = 999;
+
+function parseMinutes(raw) {
+  const text = String(raw ?? "").trim();
+  if (text === "") return { ok: false, message: "Enter a number of minutes." };
+  if (!/^\+?\d+(\.\d+)?$/.test(text)) return { ok: false, message: "Use digits only, for example 25, or 0.5 for 30 seconds." };
+
+  const minutes = Number(text);
+  const totalMs = Math.round(minutes * 60000);
+  // The floor is one second, not one minute: the bounty's own test plan asks for a 30 second
+  // timer, which only exists if fractions of a minute are allowed.
+  if (totalMs < MIN_TOTAL_MS) return { ok: false, message: "Enter at least 1 second, for example 0.5 for 30 seconds." };
+  if (minutes > MAX_MINUTES) return { ok: false, message: `Enter at most ${MAX_MINUTES} minutes.` };
+
+  return { ok: true, minutes, totalMs };
+}
+
+// Ceiling, so a 30 second timer reads 00:30 at the start and 00:00 only when it is over.
+function formatClock(ms) {
+  const totalSeconds = Math.ceil(Math.max(0, ms) / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function durationLabel(ms) {
+  if (ms < 60000) {
+    const seconds = Math.round(ms / 1000);
+    return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+  }
+  const minutes = Math.round((ms / 60000) * 100) / 100;
+  return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+}
+
+function notificationPayload({ configuredMs }) {
+  return {
+    title: "Time is up",
+    body: `Timer finished after ${durationLabel(configuredMs)}.`,
+    tag: "pomodoro-timer",
+  };
+}
+
+// A three note chime (B5, E6, G6) with short exponential decays.
+const CHIME_NOTES = [
+  { offsetSeconds: 0, frequency: 987.77, durationSeconds: 0.5 },
+  { offsetSeconds: 0.17, frequency: 1318.51, durationSeconds: 0.55 },
+  { offsetSeconds: 0.34, frequency: 1567.98, durationSeconds: 0.95 },
+];
+
+// Builds the whole chime up front and starts every oscillator at an absolute time on the
+// audio clock. Audio rendering happens on its own thread, so the sound is emitted at the
+// requested moment even while the page's JavaScript timers are being throttled.
+function createChimeGraph(audioContext, destination, startTime, notes = CHIME_NOTES) {
+  const master = audioContext.createGain();
+  master.gain.setValueAtTime(0.25, startTime);
+  master.connect(destination);
+
+  const oscillators = notes.map((note) => {
+    const startsAt = startTime + note.offsetSeconds;
+    const oscillator = audioContext.createOscillator();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(note.frequency, startsAt);
+
+    const envelope = audioContext.createGain();
+    envelope.gain.setValueAtTime(0.0001, startsAt);
+    envelope.gain.linearRampToValueAtTime(1, startsAt + 0.02);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, startsAt + note.durationSeconds);
+
+    oscillator.connect(envelope).connect(master);
+    oscillator.start(startsAt);
+    oscillator.stop(startsAt + note.durationSeconds + 0.05);
+    return oscillator;
+  });
+
+  const last = notes[notes.length - 1];
+  return {
+    endsAt: startTime + last.offsetSeconds + last.durationSeconds,
+    stop() {
+      for (const oscillator of oscillators) {
+        try {
+          oscillator.stop();
+          oscillator.disconnect();
+        } catch {
+          // Already stopped: nothing to do.
+        }
+      }
+    },
+  };
+}
+
+// Whole countdowns are armed in one go, however far away the deadline is: the audio clock
+// keeps its own time, so a chime armed for audio time 1500s rings at 1500s even when the
+// page's JavaScript timers are throttled, delayed or coalesced along the way.
+function createChimePlayer({ onChange = () => {} } = {}) {
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  let context = null;
+  let scheduled = null;
+  let supported = Boolean(AudioContextCtor);
+  let unlocked = false;
+
+  function status() {
+    return { supported, unlocked, contextState: context ? context.state : "none" };
+  }
+
+  async function unlock() {
+    if (!supported) return false;
+
+    if (!context) {
+      try {
+        context = new AudioContextCtor({ latencyHint: "interactive" });
+        context.addEventListener?.("statechange", () => {
+          unlocked = context.state === "running";
+          onChange(status());
+        });
+      } catch (error) {
+        supported = false;
+        console.info("[pomodoro] audio context unavailable:", error);
+        onChange(status());
+        return false;
+      }
+    }
+
+    if (context.state === "suspended") {
+      try {
+        await context.resume();
+      } catch (error) {
+        console.info("[pomodoro] audio context resume failed:", error);
+      }
+    }
+
+    unlocked = context.state === "running";
+    console.info("[pomodoro] audio unlocked:", unlocked, "context state:", context.state);
+    onChange(status());
+    return unlocked;
+  }
+
+  function cancel() {
+    if (!scheduled) return;
+    scheduled.graph.stop();
+    scheduled = null;
+  }
+
+  function schedule(delayMs) {
+    if (!context || context.state !== "running") return false;
+    cancel();
+
+    const offsetMs = Math.max(0, delayMs);
+    const startTime = context.currentTime + offsetMs / 1000;
+    try {
+      scheduled = { graph: createChimeGraph(context, context.destination, startTime), offsetMs, startTime };
+      console.info(`[pomodoro] chime armed for audio time ${startTime.toFixed(3)}s, in ${Math.round(offsetMs)}ms`);
+      return true;
+    } catch (error) {
+      console.info("[pomodoro] could not schedule the chime:", error);
+      return false;
+    }
+  }
+
+  // Armed means the chime is still waiting on the audio clock. Once its start time has gone
+  // by it is ringing or has rung, which is how the completion handler avoids a double ring.
+  function isArmed() {
+    return Boolean(scheduled);
+  }
+
+  function hasSounded() {
+    return Boolean(scheduled) && Boolean(context) && context.currentTime >= scheduled.startTime;
+  }
+
+  // Plays immediately without touching the timer's pending chime, so ringing a test chime
+  // mid-run cannot cancel the real one.
+  function playNow() {
+    if (!context || context.state !== "running") return false;
+    try {
+      createChimeGraph(context, context.destination, context.currentTime);
+      return true;
+    } catch (error) {
+      console.info("[pomodoro] could not play the chime:", error);
+      return false;
+    }
+  }
+
+  function debug() {
+    return {
+      ...status(),
+      armed: isArmed(),
+      sounded: hasSounded(),
+      armedForAudioTime: scheduled ? scheduled.startTime : null,
+      audioTime: context ? context.currentTime : null,
+    };
+  }
+
+  return { status, debug, unlock, schedule, cancel, playNow, isArmed, hasSounded };
+}
+
+// The countdown is always derived from an absolute deadline, never from accumulated ticks,
+// so a late or coalesced tick cannot make the timer drift. `tick()` reports how late the
+// completion was noticed, which is how Chrome's hidden tab throttling shows up.
+function createTimer({ now = () => Date.now(), onTick = () => {}, onComplete = () => {} } = {}) {
+  let configuredMs = 0;
+  let remainingMsLeft = 0;
+  let deadline = 0;
+  let phase = "idle";
+
+  function snapshot() {
+    return {
+      phase,
+      configuredMs,
+      remainingMs: phase === "running" ? Math.max(0, deadline - now()) : remainingMsLeft,
+    };
+  }
+
+  function emit() {
+    onTick(snapshot());
+  }
+
+  return {
+    snapshot,
+    configure(totalMs) {
+      configuredMs = totalMs;
+      remainingMsLeft = totalMs;
+      deadline = 0;
+      phase = "idle";
+      emit();
+    },
+    start() {
+      if (configuredMs <= 0 || phase === "running") return false;
+      deadline = now() + remainingMsLeft;
+      phase = "running";
+      emit();
+      return true;
+    },
+    pause() {
+      if (phase !== "running") return false;
+      remainingMsLeft = Math.max(0, deadline - now());
+      deadline = 0;
+      phase = "paused";
+      emit();
+      return true;
+    },
+    reset() {
+      remainingMsLeft = configuredMs;
+      deadline = 0;
+      phase = "idle";
+      emit();
+      return true;
+    },
+    tick() {
+      if (phase !== "running") return snapshot();
+      const lateByMs = now() - deadline;
+      if (lateByMs >= 0) {
+        remainingMsLeft = configuredMs;
+        deadline = 0;
+        phase = "completed";
+        emit();
+        onComplete({ lateByMs, configuredMs });
+      } else {
+        emit();
+      }
+      return snapshot();
+    },
+  };
+}
+
+// Holding a Web Lock tells the browser this page is still doing work, which Chrome uses as a
+// signal to keep a background tab running instead of freezing or discarding it.
+function holdKeepAlive(navigatorLike) {
+  const locks = navigatorLike?.locks;
+  if (!locks || typeof locks.request !== "function") return () => {};
+
+  let release = () => {};
+  locks.request("pomodoro-timer-running", () => new Promise((resolve) => { release = resolve; })).catch(() => {});
+  return () => release();
+}
+
+function audioNoticeMessage({ supported, unlocked, contextState, attempted }) {
+  if (!supported) {
+    return {
+      kind: "error",
+      text: "This browser has no Web Audio support, so the chime cannot play. The timer still flashes, changes the tab title and notifies you.",
+    };
+  }
+  if (!attempted) return null;
+  if (!unlocked) {
+    return {
+      kind: "warning",
+      text: "Chrome is blocking sound for this page. Press Test chime once, or open the padlock in the address bar and set Sound to Allow. The timer keeps working without sound.",
+    };
+  }
+  if (contextState !== "running") {
+    return {
+      kind: "warning",
+      text: "Chrome suspended audio for this tab, so the next chime would be silent. Press Test chime to wake audio back up; the countdown and the visual alert are unaffected.",
+    };
+  }
+  return null;
+}
+
+function notificationNoticeMessage({ supported, permission }) {
+  if (!supported) {
+    return { kind: "warning", text: "This browser cannot show notifications. The chime and the flashing tab title are the alerts." };
+  }
+  if (permission === "denied") {
+    return {
+      kind: "warning",
+      text: "Notifications are blocked for this page. The chime and the flashing tab title still alert you. To allow them later: padlock icon, Site settings, Notifications, Allow.",
+    };
+  }
+  if (permission === "default") {
+    return { kind: "info", text: "Press Start once and Chrome asks for notification permission. It is optional: the chime rings either way." };
+  }
+  return null;
+}
+/*</core-logic>*/
+
+const APP_ICON = "data:image/svg+xml," + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">' +
+  '<rect width="64" height="64" rx="16" fill="#1b5fd9"/>' +
+  '<circle cx="32" cy="34" r="17" fill="none" stroke="#fff" stroke-width="4"/>' +
+  '<path d="M32 23v11l8 6" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>' +
+  '</svg>',
+);
+
+const TITLE = "Pomodoro";
+const TITLE_ALERT_MS = 60000;
+
+const elements = {
+  setup: document.getElementById("setup"),
+  input: document.getElementById("minutes"),
+  error: document.getElementById("input-error"),
+  display: document.getElementById("display"),
+  progress: document.getElementById("progress"),
+  status: document.getElementById("status"),
+  start: document.getElementById("start"),
+  reset: document.getElementById("reset"),
+  test: document.getElementById("test"),
+  audioNotice: document.getElementById("audio-notice"),
+  permissionNotice: document.getElementById("permission-notice"),
+};
+
+const diagnostics = { lastCompletion: null, lastNotification: null, keepAliveHeld: false };
+
+const player = createChimePlayer({
+  onChange: () => {
+    refreshAudioNotice();
+    ensureChimeScheduled();
+  },
+});
+const timer = createTimer({ onTick: render, onComplete: onTimerComplete });
+
+let ticker = null;
+let audioAttempted = false;
+let releaseKeepAlive = () => {};
+let titleTimer = null;
+
+function render(snapshot = timer.snapshot()) {
+  const fraction = snapshot.phase === "idle" || snapshot.configuredMs <= 0
+    ? 0
+    : Math.min(1, snapshot.remainingMs / snapshot.configuredMs);
+
+  elements.display.textContent = formatClock(snapshot.remainingMs);
+  elements.progress.style.transform = `scaleX(${fraction})`;
+  document.body.dataset.phase = snapshot.phase;
+  elements.start.textContent = snapshot.phase === "running" ? "Pause" : snapshot.phase === "paused" ? "Resume" : "Start";
+  elements.reset.disabled = snapshot.phase === "idle";
+  if (snapshot.phase === "running" && titleTimer === null) {
+    document.title = `${formatClock(snapshot.remainingMs)} - ${TITLE}`;
+  }
+}
+
+function setStatus(text) {
+  elements.status.textContent = text;
+}
+
+function showNotice(element, notice) {
+  if (!notice) {
+    element.hidden = true;
+    element.textContent = "";
+    element.removeAttribute("data-kind");
+    return;
+  }
+  element.textContent = notice.text;
+  element.dataset.kind = notice.kind;
+  element.hidden = false;
+}
+
+function refreshAudioNotice() {
+  showNotice(elements.audioNotice, audioNoticeMessage({ ...player.status(), attempted: audioAttempted }));
+}
+
+function refreshPermissionNotice() {
+  const supported = "Notification" in window;
+  showNotice(elements.permissionNotice, notificationNoticeMessage({
+    supported,
+    permission: supported ? Notification.permission : "unsupported",
+  }));
+}
+
+function validateInput({ focus }) {
+  const result = parseMinutes(elements.input.value);
+  if (!result.ok) {
+    elements.error.textContent = result.message;
+    elements.error.hidden = false;
+    elements.input.setAttribute("aria-invalid", "true");
+    if (focus) elements.input.focus();
+    return null;
+  }
+  elements.error.textContent = "";
+  elements.error.hidden = true;
+  elements.input.removeAttribute("aria-invalid");
+  return result;
+}
+
+function startTicker() {
+  stopTicker();
+  ticker = setInterval(() => timer.tick(), 250);
+}
+
+function stopTicker() {
+  if (ticker !== null) {
+    clearInterval(ticker);
+    ticker = null;
+  }
+}
+
+// The chime is armed as soon as the timer runs and audio is unlocked, and re-armed whenever
+// audio comes back: a later click that unlocks it, or a resumed audio context.
+function ensureChimeScheduled() {
+  if (timer.snapshot().phase !== "running") return false;
+  if (player.isArmed()) return true;
+  const armed = player.schedule(timer.snapshot().remainingMs);
+  if (!armed) refreshAudioNotice();
+  return armed;
+}
+
+function holdKeepAliveLock() {
+  releaseKeepAlive();
+  releaseKeepAlive = holdKeepAlive(navigator);
+  diagnostics.keepAliveHeld = true;
+}
+
+function releaseKeepAliveLock() {
+  releaseKeepAlive();
+  releaseKeepAlive = () => {};
+  diagnostics.keepAliveHeld = false;
+}
+
+async function ensureNotificationPermission() {
+  if (!("Notification" in window)) {
+    refreshPermissionNotice();
+    return "unsupported";
+  }
+  if (Notification.permission === "default") {
+    try {
+      await Notification.requestPermission();
+    } catch (error) {
+      console.info("[pomodoro] notification permission request failed:", error);
+    }
+  }
+  refreshPermissionNotice();
+  return Notification.permission;
+}
+
+function notifyCompletion(configuredMs) {
+  const payload = notificationPayload({ configuredMs });
+  if (!("Notification" in window) || Notification.permission !== "granted") {
+    diagnostics.lastNotification = {
+      ...payload,
+      attempted: true,
+      shown: false,
+      reason: "Notification" in window ? Notification.permission : "unsupported",
+    };
+    console.info("[pomodoro] notification skipped, permission is:", diagnostics.lastNotification.reason);
+    return false;
+  }
+  try {
+    const notification = new Notification(payload.title, {
+      body: payload.body,
+      tag: payload.tag,
+      renotify: true,
+      requireInteraction: true,
+      icon: APP_ICON,
+      silent: false,
+    });
+    notification.addEventListener?.("click", () => {
+      window.focus();
+      notification.close();
+    });
+    diagnostics.lastNotification = { ...payload, attempted: true, shown: true };
+    return true;
+  } catch (error) {
+    diagnostics.lastNotification = { ...payload, attempted: true, shown: false, reason: String(error) };
+    console.info("[pomodoro] notification failed:", error);
+    return false;
+  }
+}
+
+function flashTitle() {
+  clearTimeout(titleTimer);
+  document.title = "Time is up!";
+  titleTimer = setTimeout(() => {
+    titleTimer = null;
+    document.title = TITLE;
+  }, TITLE_ALERT_MS);
+}
+
+function playChimeNow() {
+  if (!player.playNow()) {
+    console.info("[pomodoro] no chime was scheduled and none could be played now; falling back to the visual alert");
+  }
+}
+
+async function toggle() {
+  const snapshot = timer.snapshot();
+
+  if (snapshot.phase === "running") {
+    timer.pause();
+    stopTicker();
+    releaseKeepAliveLock();
+    player.cancel();
+    setStatus(`Paused with ${formatClock(timer.snapshot().remainingMs)} left. Press Resume to continue.`);
+    return;
+  }
+
+  if (snapshot.phase === "idle" || snapshot.phase === "completed") {
+    const parsed = validateInput({ focus: true });
+    if (!parsed) return;
+    timer.configure(parsed.totalMs);
+  }
+
+  audioAttempted = true;
+  await player.unlock();
+  await ensureNotificationPermission();
+
+  timer.start();
+  startTicker();
+  holdKeepAliveLock();
+  ensureChimeScheduled();
+
+  setStatus(`Running: ${durationLabel(timer.snapshot().configuredMs)} timer. Space pauses, R resets.`);
+  refreshAudioNotice();
+}
+
+function reset() {
+  stopTicker();
+  releaseKeepAliveLock();
+  player.cancel();
+  clearTimeout(titleTimer);
+  titleTimer = null;
+  document.title = TITLE;
+
+  const parsed = validateInput({ focus: false });
+  if (parsed) timer.configure(parsed.totalMs);
+  else timer.reset();
+
+  setStatus(`Reset to ${durationLabel(timer.snapshot().remainingMs)}. Press Start.`);
+  refreshAudioNotice();
+}
+
+function onTimerComplete({ lateByMs, configuredMs }) {
+  const chimeWasArmed = player.isArmed();
+  const chimeSounded = player.hasSounded();
+  stopTicker();
+  releaseKeepAliveLock();
+  if (chimeSounded) player.cancel(); // the run's chime has done its job
+  else if (!chimeWasArmed) playChimeNow(); // audio was locked when the run started, so ring now
+
+  const notified = notifyCompletion(configuredMs);
+  diagnostics.lastCompletion = { lateByMs, configuredMs, chimeWasArmed, chimeSounded, notified };
+  console.info(`[pomodoro] timer finished: chime armed=${chimeWasArmed} sounded=${chimeSounded}, noticed ${Math.round(lateByMs)}ms after the deadline, notification=${notified}`);
+
+  const lateNote = lateByMs >= 1500
+    ? ` Chrome woke this tab ${durationLabel(lateByMs)} late because it was hidden, so the reset is late while the sound is not.`
+    : "";
+  setStatus(`Time is up: the timer finished after ${durationLabel(configuredMs)}.${lateNote}`);
+  flashTitle();
+  render();
+}
+
+async function playTestChime() {
+  audioAttempted = true;
+  const ready = await player.unlock();
+  refreshAudioNotice();
+  if (!ready) {
+    setStatus("Sound is still blocked. Open the padlock in the address bar, set Sound to Allow, then press Test chime again.");
+    return;
+  }
+  ensureChimeScheduled();
+  player.playNow();
+  setStatus("Test chime played. If you heard it, background timers ring too.");
+}
+
+function installLifecycleHooks() {
+  // Every moment the page gets attention again is a chance to catch up: recompute the
+  // countdown, re-arm the chime if audio came back, and refresh the notice messages.
+  const catchUp = () => {
+    timer.tick();
+    ensureChimeScheduled();
+    refreshAudioNotice();
+    refreshPermissionNotice();
+  };
+
+  document.addEventListener("visibilitychange", () => {
+    catchUp();
+    if (document.hidden && timer.snapshot().phase === "running") {
+      console.info("[pomodoro] tab hidden: the chime stays scheduled on the audio clock");
+    }
+  });
+  window.addEventListener("focus", catchUp);
+  window.addEventListener("pageshow", catchUp);
+  document.addEventListener("freeze", () => console.info("[pomodoro] tab frozen by the browser"));
+  document.addEventListener("resume", () => {
+    // Back from frozen: the audio clock may have stalled with the tab, so arm the chime again
+    // from the countdown that the wall clock says is left.
+    player.cancel();
+    catchUp();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    const target = event.target;
+    const typing = target instanceof HTMLElement && (target.tagName === "INPUT" || target.isContentEditable);
+    if (typing) return;
+
+    const onButton = target instanceof HTMLElement && target.tagName === "BUTTON";
+    if (event.code === "Space" && !onButton) {
+      event.preventDefault();
+      toggle();
+      return;
+    }
+    if (event.key.toLowerCase() === "r") {
+      event.preventDefault();
+      reset();
+    }
+  });
+}
+
+function installControls() {
+  elements.start.addEventListener("click", () => toggle());
+  elements.reset.addEventListener("click", () => reset());
+  elements.test.addEventListener("click", () => playTestChime());
+
+  elements.setup.addEventListener("submit", (event) => {
+    event.preventDefault();
+    toggle();
+  });
+
+  elements.input.addEventListener("input", () => {
+    if (elements.input.value.trim() === "") {
+      elements.error.hidden = true;
+      elements.input.removeAttribute("aria-invalid");
+      return;
+    }
+    validateInput({ focus: false });
+  });
+
+  // A new number applies to the next run; while idle it also moves the displayed time.
+  elements.input.addEventListener("change", () => {
+    const parsed = validateInput({ focus: false });
+    const phase = timer.snapshot().phase;
+    if (parsed && (phase === "idle" || phase === "completed")) {
+      timer.configure(parsed.totalMs);
+      setStatus(`Set to ${durationLabel(parsed.totalMs)}. Press Start.`);
+    }
+  });
+}
+
+function installPermissionWatcher() {
+  // Covers "denied first, allowed later": the browser tells us when the setting changes.
+  navigator.permissions?.query?.({ name: "notifications" }).then((result) => {
+    result.addEventListener?.("change", refreshPermissionNotice);
+  }).catch(() => {});
+}
+
+function installIcon() {
+  if (document.querySelector('link[rel~="icon"]')) return;
+  const link = document.createElement("link");
+  link.rel = "icon";
+  link.href = APP_ICON; // inline, so the tab never asks the network for a favicon
+  document.head.append(link);
+}
+
+function init() {
+  installIcon();
+  const initial = parseMinutes(elements.input.value);
+  if (initial.ok) timer.configure(initial.totalMs);
+  installControls();
+  installLifecycleHooks();
+  installPermissionWatcher();
+  refreshAudioNotice();
+  refreshPermissionNotice();
+  render();
+
+  // Debug and test handle; tests/chrome-e2e.js drives the shipped code through it.
+  window.__pomodoro = {
+    timer, player, diagnostics, parseMinutes, formatClock, durationLabel, notificationPayload,
+    createChimeGraph, audioNoticeMessage, notificationNoticeMessage,
+  };
+  console.info("[pomodoro] ready. Debug handle: window.__pomodoro");
+}
+
+init();
+</script>
+</body>
+</html>
