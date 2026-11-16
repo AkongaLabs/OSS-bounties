@@ -1,0 +1,14 @@
+{
+  "name": "pomodoro-bounty-solution",
+  "private": true,
+  "description": "Bounty #1: single file Pomodoro timer with Chrome background audio. The app itself has no dependencies.",
+  "scripts": {
+    "test": "bun test",
+    "e2e": "bun tests/chrome-e2e.js",
+    "screenshots": "bun tests/screenshots.js",
+    "serve": "bunx --bun serve -p 4173 ."
+  },
+  "devDependencies": {
+    "playwright": "^1.65.1"
+  }
+}
